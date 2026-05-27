@@ -51,6 +51,12 @@ export async function SiteHeader() {
           >
             Productos
           </Link>
+          <Link
+            href="/fotolibro"
+            className="text-sm font-medium text-primary hover:text-primary/80 transition-colors"
+          >
+            Fotolibro
+          </Link>
           {(headerCategories ?? []).map((c) => (
             <Link
               key={c.slug}

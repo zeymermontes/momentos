@@ -485,6 +485,50 @@ export interface Database {
           category_id: string;
         }
       >;
+      photobook_projects: Table<
+        {
+          id: string;
+          user_id: string;
+          size_cm: number;
+          page_count: number;
+          title: string;
+          cover_image_path: string | null;
+          cover_crop: Json;
+          status: string;
+          created_at: string;
+          updated_at: string;
+        },
+        {
+          id?: string;
+          user_id: string;
+          size_cm: number;
+          page_count: number;
+          title?: string;
+          cover_image_path?: string | null;
+          cover_crop?: Json;
+          status?: string;
+          created_at?: string;
+          updated_at?: string;
+        }
+      >;
+      photobook_pages: Table<
+        {
+          id: string;
+          project_id: string;
+          sort_order: number;
+          image_path: string | null;
+          crop: Json;
+          created_at: string;
+        },
+        {
+          id?: string;
+          project_id: string;
+          sort_order: number;
+          image_path?: string | null;
+          crop?: Json;
+          created_at?: string;
+        }
+      >;
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
