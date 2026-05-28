@@ -32,13 +32,32 @@ function parseCrop(v: unknown): CropState {
   };
 }
 
+// Module-level cache of signed storage URLs so navigating across the
+// photobook steps reuses the same URL — the browser can then cache the
+// image bytes across pages instead of re-downloading. Sign for 24h and
+// re-sign 30min before expiry to avoid serving a URL that will fail
+// halfway through the user's session.
+const SIGN_TTL_SECONDS = 24 * 60 * 60;
+const SIGN_GRACE_MS = 30 * 60 * 1000;
+const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
+
 async function signUrl(path: string | null): Promise<string | null> {
   if (!path) return null;
+  const now = Date.now();
+  const cached = signedUrlCache.get(path);
+  if (cached && cached.expiresAt > now + SIGN_GRACE_MS) {
+    return cached.url;
+  }
   const supabase = await createClient();
   const { data } = await supabase.storage
     .from("customer-uploads")
-    .createSignedUrl(path, 3600);
-  return data?.signedUrl ?? null;
+    .createSignedUrl(path, SIGN_TTL_SECONDS);
+  if (!data?.signedUrl) return null;
+  signedUrlCache.set(path, {
+    url: data.signedUrl,
+    expiresAt: now + SIGN_TTL_SECONDS * 1000,
+  });
+  return data.signedUrl;
 }
 
 export async function getProject(projectId: string): Promise<PhotobookProject | null> {

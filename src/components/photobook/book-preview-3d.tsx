@@ -197,7 +197,11 @@ function CoverFace({
 }
 
 function PageFace({ page, pageNum }: { page: PhotobookPage; pageNum: number }) {
-  const src = page.image_url ?? page.thumb_url!;
+  // Prefer the thumbnail: it's the same image the user already saw on
+  // the /paginas step, so the browser cache delivers it instantly. The
+  // 3D book face is small enough that a thumb-quality image is more
+  // than adequate.
+  const src = page.thumb_url ?? page.image_url!;
   return (
     <div className="relative h-full w-full bg-white">
       <PageThumb src={src} crop={page.crop} />

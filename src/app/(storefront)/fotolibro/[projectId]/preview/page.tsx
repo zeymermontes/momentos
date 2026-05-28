@@ -1,13 +1,10 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { requireUser } from "@/lib/auth";
-import { getProject, getProjectPages, getCoverUrl, getPhotobookSettings } from "@/lib/photobook";
+import { getProject, getProjectPages, getCoverThumbUrl, getCoverUrl, getPhotobookSettings } from "@/lib/photobook";
 import { StepIndicator } from "@/components/photobook/step-indicator";
+import { StepNav } from "@/components/photobook/step-nav";
 import { BookPreview3D } from "@/components/photobook/book-preview-3d";
 import { AddToCartButton } from "./_components/add-to-cart-placeholder";
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 
 export const metadata = { title: "Vista previa — Fotolibro" };
 export const dynamic = "force-dynamic";
@@ -22,11 +19,16 @@ export default async function PreviewPage({
   const project = await getProject(projectId);
   if (!project) notFound();
 
-  const [pages, coverUrl, settings] = await Promise.all([
+  // Prefer the cover thumbnail so the 3D book reuses the same image
+  // assets already in the browser cache from earlier steps. Fall back to
+  // the full image only if the thumb hasn't been generated yet.
+  const [pages, coverThumb, coverFull, settings] = await Promise.all([
     getProjectPages(projectId),
+    getCoverThumbUrl(project),
     getCoverUrl(project),
     getPhotobookSettings(),
   ]);
+  const coverUrl = coverThumb ?? coverFull;
 
   const filledCount = pages.filter((p) => p.image_url).length;
 
@@ -38,26 +40,25 @@ export default async function PreviewPage({
         <h2 className="text-2xl font-bold">Vista previa de tu fotolibro</h2>
 
         <BookPreview3D project={project} coverUrl={coverUrl} pages={pages} />
-
-        <div className="flex flex-wrap justify-center gap-3">
-          <Link
-            href={`/fotolibro/${projectId}/paginas`}
-            className={cn(buttonVariants({ variant: "outline" }), "gap-2")}
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Editar páginas
-          </Link>
-
-          {filledCount > 0 && (
-            <AddToCartButton
-              projectId={projectId}
-              sizeCm={project.size_cm}
-              pageCount={project.page_count}
-              settings={settings}
-            />
-          )}
-        </div>
       </div>
+
+      <StepNav
+        back={{ href: `/fotolibro/${projectId}/paginas` }}
+        next={
+          filledCount > 0
+            ? {
+                node: (
+                  <AddToCartButton
+                    projectId={projectId}
+                    sizeCm={project.size_cm}
+                    pageCount={project.page_count}
+                    settings={settings}
+                  />
+                ),
+              }
+            : undefined
+        }
+      />
     </>
   );
 }

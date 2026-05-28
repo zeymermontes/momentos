@@ -2,12 +2,11 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { cn, formatMXN } from "@/lib/utils";
 import { getPhotobookPrice } from "@/lib/photobook-config";
 import type { PhotobookSettings } from "@/lib/photobook-config";
 import { updateProjectConfigAction } from "@/app/(storefront)/fotolibro/actions";
+import { StepNav } from "@/components/photobook/step-nav";
 
 type Props = {
   projectId: string;
@@ -121,15 +120,14 @@ export function ProjectConfigForm({
         </p>
       )}
 
-      <Button
-        size="lg"
-        className="w-full gap-2"
-        onClick={handleContinue}
-        disabled={isPending}
-      >
-        {isPending ? "Guardando..." : changed ? "Guardar y continuar" : "Continuar"}
-        <ArrowRight className="h-4 w-4" />
-      </Button>
+      <StepNav
+        back={{ href: "/fotolibro" }}
+        next={{
+          onClick: handleContinue,
+          pending: isPending,
+          label: changed ? "Guardar y continuar" : "Continuar",
+        }}
+      />
     </div>
   );
 }

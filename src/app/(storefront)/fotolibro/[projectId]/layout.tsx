@@ -15,5 +15,9 @@ export default async function PhotobookProjectLayout({
   if (!project) notFound();
   if (project.user_id !== user.id) redirect("/fotolibro");
 
-  return <div className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6">{children}</div>;
+  return (
+    <div className="mx-auto w-full min-w-0 max-w-5xl overflow-x-hidden px-4 py-6 sm:px-6">
+      {children}
+    </div>
+  );
 }

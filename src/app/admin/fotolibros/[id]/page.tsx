@@ -7,6 +7,7 @@ import { requireAdmin } from "@/lib/auth";
 import { getProject, getProjectPages, getCoverUrl, getPrintSheetUrls } from "@/lib/photobook";
 import { getPhotobookSettings, getPhotobookPrice } from "@/lib/photobook";
 import { GenerateSheets } from "@/components/photobook/generate-sheets";
+import { PageThumb } from "@/components/photobook/page-preview";
 import { formatMXN } from "@/lib/utils";
 
 export const metadata = { title: "Detalle fotolibro — Admin" };
@@ -84,10 +85,7 @@ export default async function AdminPhotobookDetailPage({
             <div className="h-40 w-40 shrink-0 overflow-hidden bg-white shadow">
               {coverUrl ? (
                 <div className="relative h-full w-full">
-                  <div className="absolute inset-[10%] overflow-hidden">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={coverUrl} alt="Portada" className="h-full w-full object-contain" />
-                  </div>
+                  <PageThumb src={coverUrl} crop={project.cover_crop} />
                   {project.title && (
                     <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center" style={{ height: "10%" }}>
                       <span className="text-[8px] font-semibold text-gray-700 truncate px-1">
@@ -115,30 +113,26 @@ export default async function AdminPhotobookDetailPage({
         <CardContent className="p-5 space-y-3">
           <h3 className="font-semibold">Páginas ({filledPages.length}/{project.page_count})</h3>
           <div className="grid grid-cols-4 gap-3 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10">
-            {pages.map((page) => (
-              <div
-                key={page.id}
-                className="relative aspect-square overflow-hidden bg-white shadow-sm border border-border"
-              >
-                {(page.thumb_url || page.image_url) ? (
-                  <div className="absolute inset-[10%] overflow-hidden">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={page.thumb_url ?? page.image_url!}
-                      alt={`Página ${page.sort_order}`}
-                      className="h-full w-full object-contain"
-                    />
-                  </div>
-                ) : (
-                  <div className="grid h-full w-full place-items-center text-muted-foreground/30">
-                    <span className="text-[9px]">—</span>
-                  </div>
-                )}
-                <span className="absolute bottom-0.5 left-1 text-[8px] text-gray-400">
-                  {page.sort_order}
-                </span>
-              </div>
-            ))}
+            {pages.map((page) => {
+              const src = page.thumb_url ?? page.image_url;
+              return (
+                <div
+                  key={page.id}
+                  className="relative aspect-square overflow-hidden bg-white shadow-sm border border-border"
+                >
+                  {src ? (
+                    <PageThumb src={src} crop={page.crop} />
+                  ) : (
+                    <div className="grid h-full w-full place-items-center text-muted-foreground/30">
+                      <span className="text-[9px]">—</span>
+                    </div>
+                  )}
+                  <span className="absolute bottom-0.5 left-1 text-[8px] text-gray-400">
+                    {page.sort_order}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </CardContent>
       </Card>

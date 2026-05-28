@@ -60,10 +60,12 @@ export function DeleteProjectButton({ projectId }: { projectId: string }) {
     <button
       type="button"
       onClick={() => setConfirm(true)}
-      className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-destructive transition hover:bg-destructive/10"
+      aria-label="Eliminar fotolibro"
+      title="Eliminar fotolibro"
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium text-destructive transition hover:bg-destructive/10 sm:px-3"
     >
       <Trash2 className="h-3.5 w-3.5" />
-      Eliminar fotolibro
+      <span className="hidden sm:inline">Eliminar fotolibro</span>
     </button>
   );
 }

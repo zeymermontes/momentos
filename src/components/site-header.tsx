@@ -107,7 +107,7 @@ export async function SiteHeader() {
               href="/mi-cuenta/pedidos"
               aria-label={`Tienes ${pendingOrderCount} pedido${pendingOrderCount === 1 ? "" : "s"} pendiente${pendingOrderCount === 1 ? "" : "s"}`}
               title="Pedidos pendientes de pago"
-              className="relative inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-muted"
+              className="relative hidden h-10 w-10 items-center justify-center rounded-md hover:bg-muted sm:inline-flex"
             >
               <History className="h-5 w-5" />
               <span className="absolute -right-0.5 -top-0.5 grid h-5 min-w-5 place-items-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">
@@ -121,7 +121,7 @@ export async function SiteHeader() {
               href={`/fotolibro/${draftProject.id}/configuracion`}
               aria-label="Fotolibro en progreso"
               title="Continuar fotolibro"
-              className="relative inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-muted"
+              className="relative hidden h-10 w-10 items-center justify-center rounded-md hover:bg-muted sm:inline-flex"
             >
               <Book className="h-5 w-5" />
               <span className="absolute -right-0.5 -top-0.5 grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
@@ -147,7 +147,7 @@ export async function SiteHeader() {
             <Link
               href="/mi-cuenta"
               aria-label="Mi cuenta"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-muted"
+              className="hidden h-10 w-10 items-center justify-center rounded-md hover:bg-muted sm:inline-flex"
             >
               <User className="h-5 w-5" />
             </Link>

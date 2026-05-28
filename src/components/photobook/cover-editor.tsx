@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ImageCropper } from "@/components/photobook/image-cropper";
+import { StepNav } from "@/components/photobook/step-nav";
 import { optimizeImage, getImageDimensions } from "@/lib/image-optimize";
 import { createClient } from "@/lib/supabase/client";
 import { updateCoverAction, type ActionState } from "@/app/(storefront)/fotolibro/actions";
@@ -71,13 +72,14 @@ export function CoverEditor({ project, coverUrl, userId }: Props) {
   }
 
   return (
+    <>
     <div className="mx-auto grid w-full max-w-4xl gap-8 lg:grid-cols-2">
       {/* Editor */}
-      <div className="space-y-4">
+      <div className="min-w-0 space-y-4">
         <h2 className="text-xl font-bold">Diseña tu portada</h2>
 
         {imageUrl && imgDims ? (
-          <div className="relative">
+          <div className="relative w-full max-w-full">
             <ImageCropper
               src={imageUrl}
               imgWidth={imgDims.width}
@@ -167,7 +169,7 @@ export function CoverEditor({ project, coverUrl, userId }: Props) {
       </div>
 
       {/* Preview + save */}
-      <div className="space-y-4">
+      <div className="min-w-0 space-y-4">
         <h2 className="text-xl font-bold">Vista previa</h2>
 
         <CoverPreview
@@ -177,7 +179,7 @@ export function CoverEditor({ project, coverUrl, userId }: Props) {
           title={title}
         />
 
-        <form action={formAction}>
+        <form id="cover-form" action={formAction}>
           <input type="hidden" name="project_id" value={project.id} />
           <input type="hidden" name="title" value={title} />
           <input type="hidden" name="cover_image_path" value={imagePath} />
@@ -189,13 +191,21 @@ export function CoverEditor({ project, coverUrl, userId }: Props) {
               {state.message}
             </p>
           )}
-
-          <Button type="submit" disabled={pending || !imageUrl} className="w-full">
-            {pending ? "Guardando..." : "Guardar y continuar"}
-          </Button>
         </form>
       </div>
     </div>
+
+    <StepNav
+      back={{ href: `/fotolibro/${project.id}/configuracion` }}
+      next={{
+        type: "submit",
+        form: "cover-form",
+        pending,
+        disabled: !imageUrl,
+        label: "Guardar y continuar",
+      }}
+    />
+    </>
   );
 }
 
@@ -240,7 +250,7 @@ function CoverPreview({
   return (
     <div
       ref={previewRef}
-      className="relative aspect-square w-full overflow-hidden bg-white shadow-lg"
+      className="relative aspect-square w-full max-w-full overflow-hidden bg-white shadow-lg"
     >
       {scaleDown > 0 && (
         <div
