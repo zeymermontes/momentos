@@ -37,6 +37,18 @@ export function ImageCropper({
   const containerRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
   const lastPos = useRef({ x: 0, y: 0 });
+  // Active pointers indexed by pointerId so we can detect single-finger
+  // pan vs. two-finger pinch on touch devices.
+  const pointers = useRef<Map<number, { x: number; y: number }>>(new Map());
+  // Snapshot taken when the second finger lands; pinch deltas are computed
+  // against this baseline so a slow gesture doesn't drift.
+  const pinchStart = useRef<null | {
+    dist: number;
+    mid: { x: number; y: number };
+    scale: number;
+    cropX: number;
+    cropY: number;
+  }>(null);
   const [displaySize, setDisplaySize] = useState(REF);
 
   const live = useRef(crop);
@@ -64,16 +76,69 @@ export function ImageCropper({
 
   const rotation = crop.rotation ?? 0;
 
-  // --- Pointer (pan) ---
+  // --- Pointer (pan + pinch zoom) ---
   // Mouse deltas are in display-space pixels; convert to REF-space.
   const onPointerDown = (e: RPointerEvent) => {
-    if (e.button !== 0) return;
-    dragging.current = true;
-    lastPos.current = { x: e.clientX, y: e.clientY };
+    // Mouse: only the left button initiates drag. Touch/pen: always.
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
+
+    if (pointers.current.size === 1) {
+      dragging.current = true;
+      lastPos.current = { x: e.clientX, y: e.clientY };
+      pinchStart.current = null;
+    } else if (pointers.current.size === 2) {
+      // Switch from pan to pinch. Snapshot starting distance + midpoint
+      // so we can compute a stable zoom factor against the baseline.
+      dragging.current = false;
+      const [p1, p2] = Array.from(pointers.current.values());
+      pinchStart.current = {
+        dist: Math.hypot(p2.x - p1.x, p2.y - p1.y),
+        mid: { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 },
+        scale: live.current.scale,
+        cropX: live.current.x,
+        cropY: live.current.y,
+      };
+    }
   };
 
   const onPointerMove = (e: RPointerEvent) => {
+    if (!pointers.current.has(e.pointerId)) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    // Two-finger pinch zoom toward the gesture's midpoint.
+    if (pointers.current.size >= 2 && pinchStart.current) {
+      const pts = Array.from(pointers.current.values()).slice(0, 2);
+      const [p1, p2] = pts;
+      const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+      if (dist === 0) return;
+      const start = pinchStart.current;
+      const newScale = Math.max(MIN_SCALE, start.scale * (dist / start.dist));
+      const ratio = newScale / start.scale;
+
+      const el = containerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const sr = scaleRef.current;
+      // Midpoint mapped from display-space to REF-space content coords.
+      const mx = (start.mid.x - rect.left) / sr - REF_MARGIN;
+      const my = (start.mid.y - rect.top) / sr - REF_MARGIN;
+      const newX = (1 - ratio) * (mx - REF_CONTENT / 2) + ratio * start.cropX;
+      const newY = (1 - ratio) * (my - REF_CONTENT / 2) + ratio * start.cropY;
+
+      const next: CropState = {
+        ...live.current,
+        scale: newScale,
+        x: newX,
+        y: newY,
+      };
+      live.current = next;
+      onChange(next);
+      return;
+    }
+
+    // Single-finger / mouse pan.
     if (!dragging.current) return;
     const rawDx = (e.clientX - lastPos.current.x) * PAN_DAMPING;
     const rawDy = (e.clientY - lastPos.current.y) * PAN_DAMPING;
@@ -86,8 +151,20 @@ export function ImageCropper({
     onChange(next);
   };
 
-  const onPointerUp = () => {
-    dragging.current = false;
+  const onPointerUp = (e: RPointerEvent) => {
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size < 2) {
+      pinchStart.current = null;
+    }
+    if (pointers.current.size === 0) {
+      dragging.current = false;
+    } else if (pointers.current.size === 1) {
+      // Pinch ended mid-gesture but one finger is still down. Resume pan
+      // from the remaining pointer's position so no jump happens.
+      const [remaining] = Array.from(pointers.current.values());
+      lastPos.current = { x: remaining.x, y: remaining.y };
+      dragging.current = true;
+    }
   };
 
   // --- Wheel (zoom toward cursor) ---
@@ -214,10 +291,13 @@ export function ImageCropper({
           )}
         </div>
 
-        {/* Invisible interaction layer at actual display size */}
+        {/* Invisible interaction layer at actual display size. `touch-action:
+            none` is what stops the browser from scrolling the page or
+            pinch-zooming the viewport while the user manipulates the image
+            inside the cropper. */}
         <div
           className="absolute inset-0 z-30"
-          style={{ cursor: "grab" }}
+          style={{ cursor: "grab", touchAction: "none" }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
