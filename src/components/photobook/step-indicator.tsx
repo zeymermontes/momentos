@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { DeleteProjectButton } from "@/components/photobook/delete-project-button";
 
 const STEPS = [
+  { key: "configuracion", label: "Configuración" },
   { key: "portada", label: "Portada" },
   { key: "paginas", label: "Páginas" },
   { key: "preview", label: "Vista previa" },

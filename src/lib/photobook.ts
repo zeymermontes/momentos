@@ -49,7 +49,22 @@ export async function getProject(projectId: string): Promise<PhotobookProject | 
     .eq("id", projectId)
     .maybeSingle();
   if (!data) return null;
-  return { ...data, cover_crop: parseCrop(data.cover_crop) } as PhotobookProject;
+  return {
+    ...data,
+    cover_crop: parseCrop(data.cover_crop),
+    print_sheets: Array.isArray(data.print_sheets) ? data.print_sheets : null,
+  } as PhotobookProject;
+}
+
+export async function getPrintSheetUrls(
+  sheets: { side: "front" | "back" | "cover"; index: number; path: string }[],
+): Promise<{ side: "front" | "back" | "cover"; index: number; url: string; storagePath: string }[]> {
+  const out = [];
+  for (const s of sheets) {
+    const url = await signUrl(s.path);
+    out.push({ side: s.side, index: s.index, url: url ?? "", storagePath: s.path });
+  }
+  return out;
 }
 
 export async function getProjectPages(projectId: string): Promise<PhotobookPage[]> {

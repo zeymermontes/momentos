@@ -4,8 +4,9 @@ import { ArrowLeft, Book } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { requireAdmin } from "@/lib/auth";
-import { getProject, getProjectPages, getCoverUrl } from "@/lib/photobook";
+import { getProject, getProjectPages, getCoverUrl, getPrintSheetUrls } from "@/lib/photobook";
 import { getPhotobookSettings, getPhotobookPrice } from "@/lib/photobook";
+import { GenerateSheets } from "@/components/photobook/generate-sheets";
 import { formatMXN } from "@/lib/utils";
 
 export const metadata = { title: "Detalle fotolibro — Admin" };
@@ -41,6 +42,9 @@ export default async function AdminPhotobookDetailPage({
   const filledPages = pages.filter((p) => p.image_url);
   const settings = await getPhotobookSettings();
   const price = getPhotobookPrice(settings, project.size_cm, project.page_count);
+  const existingSheets = project.print_sheets
+    ? await getPrintSheetUrls(project.print_sheets)
+    : [];
 
   return (
     <div className="space-y-6">
@@ -138,6 +142,25 @@ export default async function AdminPhotobookDetailPage({
           </div>
         </CardContent>
       </Card>
+
+      {/* Print sheet generator */}
+      {filledPages.length > 0 && (
+        <Card>
+          <CardContent className="p-5">
+            <GenerateSheets
+              projectId={project.id}
+              sizeCm={project.size_cm}
+              pages={pages}
+              userId={project.user_id}
+              title={project.title}
+              coverImageUrl={coverUrl}
+              coverCrop={project.cover_crop}
+              existingSheets={existingSheets}
+              autoGenerate={project.status === "ordered"}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Download links for production */}
       {project.status === "ordered" && (

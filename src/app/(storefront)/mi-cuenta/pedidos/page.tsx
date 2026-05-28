@@ -74,7 +74,7 @@ export default async function MyOrdersPage() {
               const step =
                 p.status === "completed"
                   ? "preview"
-                  : "portada";
+                  : "configuracion";
               return (
                 <Link
                   key={p.id}

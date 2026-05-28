@@ -35,20 +35,19 @@ export default async function AdminPhotobooksPage() {
 
   const { data: projects } = await supabase
     .from("photobook_projects")
-    .select("id, size_cm, page_count, title, status, created_at, updated_at, user_id, profiles!user_id(full_name)")
+    .select("id, size_cm, page_count, title, status, created_at, updated_at, user_id, print_sheets")
     .order("updated_at", { ascending: false });
 
-  const items = (projects ?? []) as unknown as {
-    id: string;
-    size_cm: number;
-    page_count: number;
-    title: string;
-    status: string;
-    created_at: string;
-    updated_at: string;
-    user_id: string;
-    profiles: { full_name: string | null } | null;
-  }[];
+  const userIds = [...new Set((projects ?? []).map((p) => p.user_id))];
+  const { data: profiles } = userIds.length > 0
+    ? await supabase.from("profiles").select("id, full_name").in("id", userIds)
+    : { data: [] };
+  const profileMap = new Map((profiles ?? []).map((p) => [p.id, p.full_name]));
+
+  const items = (projects ?? []).map((p) => ({
+    ...p,
+    profile_name: profileMap.get(p.user_id) ?? null,
+  }));
 
   return (
     <div className="space-y-4">
@@ -88,7 +87,7 @@ export default async function AdminPhotobooksPage() {
               {items.map((p) => (
                 <TableRow key={p.id}>
                   <TableCell className="text-sm">
-                    {p.profiles?.full_name || p.user_id.slice(0, 8)}
+                    {p.profile_name || p.user_id.slice(0, 8)}
                   </TableCell>
                   <TableCell className="font-medium">
                     {p.title || "Sin título"}
@@ -103,9 +102,24 @@ export default async function AdminPhotobooksPage() {
                     {formatMXN(getPhotobookPrice(settings, p.size_cm, p.page_count))}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={STATUS_BADGE[p.status] ?? "muted"}>
-                      {STATUS_LABEL[p.status] ?? p.status}
-                    </Badge>
+                    <div className="flex flex-col gap-1">
+                      <Badge variant={STATUS_BADGE[p.status] ?? "muted"}>
+                        {STATUS_LABEL[p.status] ?? p.status}
+                      </Badge>
+                      {p.status === "ordered" && (
+                        <span
+                          className={
+                            Array.isArray(p.print_sheets) && p.print_sheets.length > 0
+                              ? "text-[10px] text-emerald-700"
+                              : "text-[10px] text-amber-700"
+                          }
+                        >
+                          {Array.isArray(p.print_sheets) && p.print_sheets.length > 0
+                            ? "✓ Listo para imprimir"
+                            : "⏳ Falta generar hojas"}
+                        </span>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {new Date(p.updated_at).toLocaleDateString("es-MX", {

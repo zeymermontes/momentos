@@ -5,6 +5,12 @@ export type CropState = {
   rotation?: number;
 };
 
+export type PrintSheetRef = {
+  side: "front" | "back" | "cover";
+  index: number;
+  path: string;
+};
+
 export type PhotobookProject = {
   id: string;
   user_id: string;
@@ -15,6 +21,7 @@ export type PhotobookProject = {
   cover_thumb_path: string | null;
   cover_crop: CropState;
   status: string;
+  print_sheets: PrintSheetRef[] | null;
 };
 
 export type PhotobookPage = {

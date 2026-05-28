@@ -505,6 +505,7 @@ export interface Database {
           cover_thumb_path: string | null;
           cover_crop: Json;
           status: string;
+          print_sheets: Json | null;
           created_at: string;
           updated_at: string;
         },
@@ -518,6 +519,7 @@ export interface Database {
           cover_thumb_path?: string | null;
           cover_crop?: Json;
           status?: string;
+          print_sheets?: Json | null;
           created_at?: string;
           updated_at?: string;
         }

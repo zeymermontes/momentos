@@ -65,7 +65,7 @@ export async function SiteHeader() {
             Productos
           </Link>
           <Link
-            href={draftProject ? `/fotolibro/${draftProject.id}/portada` : "/fotolibro"}
+            href={draftProject ? `/fotolibro/${draftProject.id}/configuracion` : "/fotolibro"}
             className="text-sm font-medium text-primary hover:text-primary/80 transition-colors"
           >
             Fotolibro
@@ -117,7 +117,7 @@ export async function SiteHeader() {
 
           {draftProject ? (
             <Link
-              href={`/fotolibro/${draftProject.id}/portada`}
+              href={`/fotolibro/${draftProject.id}/configuracion`}
               aria-label="Fotolibro en progreso"
               title="Continuar fotolibro"
               className="relative inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-muted"

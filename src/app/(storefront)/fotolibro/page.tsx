@@ -21,7 +21,7 @@ export default async function PhotobookConfigPage() {
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (existing) redirect(`/fotolibro/${existing.id}/portada`);
+  if (existing) redirect(`/fotolibro/${existing.id}/configuracion`);
 
   const settings = await getPhotobookSettings();
   if (!settings.enabled) redirect("/");

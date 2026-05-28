@@ -28,7 +28,7 @@ export async function createProjectAction(
       .in("status", ["draft", "completed"])
       .limit(1)
       .maybeSingle();
-    if (existing) redirect(`/fotolibro/${existing.id}/portada`);
+    if (existing) redirect(`/fotolibro/${existing.id}/configuracion`);
 
     const { data: project, error } = await supabase
       .from("photobook_projects")
@@ -43,7 +43,73 @@ export async function createProjectAction(
     }));
     await supabase.from("photobook_pages").insert(pages);
 
-    redirect(`/fotolibro/${project.id}/portada`);
+    redirect(`/fotolibro/${project.id}/configuracion`);
+  });
+}
+
+export async function updateProjectConfigAction(
+  projectId: string,
+  sizeCm: number,
+  pageCount: number,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const { supabase } = await requireUser();
+
+    const { data: project } = await supabase
+      .from("photobook_projects")
+      .select("size_cm, page_count")
+      .eq("id", projectId)
+      .maybeSingle();
+    if (!project) return { message: "Proyecto no encontrado." };
+
+    const sizeChanged = sizeCm !== project.size_cm;
+    const pageCountChanged = pageCount !== project.page_count;
+    if (!sizeChanged && !pageCountChanged) return {};
+
+    await supabase
+      .from("photobook_projects")
+      .update({
+        size_cm: sizeCm,
+        page_count: pageCount,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", projectId);
+
+    if (pageCountChanged) {
+      if (pageCount > project.page_count) {
+        const newPages = Array.from(
+          { length: pageCount - project.page_count },
+          (_, i) => ({
+            project_id: projectId,
+            sort_order: project.page_count + i + 1,
+          }),
+        );
+        await supabase.from("photobook_pages").insert(newPages);
+      } else {
+        const { data: allPages } = await supabase
+          .from("photobook_pages")
+          .select("id")
+          .eq("project_id", projectId)
+          .order("sort_order", { ascending: false })
+          .limit(project.page_count - pageCount);
+        if (allPages && allPages.length > 0) {
+          await supabase
+            .from("photobook_pages")
+            .delete()
+            .in("id", allPages.map((p) => p.id));
+        }
+      }
+    }
+
+    if (sizeChanged) {
+      await supabase
+        .from("photobook_pages")
+        .update({ crop: { x: 0, y: 0, scale: 1, rotation: 0 } })
+        .eq("project_id", projectId);
+    }
+
+    revalidatePath(`/fotolibro/${projectId}/configuracion`);
+    return {};
   });
 }
 
@@ -354,5 +420,46 @@ export async function deleteProjectAction(
     if (error) return { message: error.message };
 
     redirect("/fotolibro");
+  });
+}
+
+export async function savePrintSheetsAction(
+  projectId: string,
+  sheetPaths: { side: "front" | "back" | "cover"; index: number; path: string }[],
+): Promise<ActionState> {
+  return runAction(async () => {
+    const { requireAdmin } = await import("@/lib/auth");
+    const { supabase } = await requireAdmin();
+
+    // Read existing sheets so we can delete any that aren't in the new set.
+    const { data: existing } = await supabase
+      .from("photobook_projects")
+      .select("print_sheets")
+      .eq("id", projectId)
+      .maybeSingle();
+
+    const oldPaths: string[] = Array.isArray(existing?.print_sheets)
+      ? (existing!.print_sheets as { path?: string }[])
+          .map((s) => s?.path)
+          .filter((p): p is string => Boolean(p))
+      : [];
+    const newPathsSet = new Set(sheetPaths.map((s) => s.path));
+    const toDelete = oldPaths.filter((p) => !newPathsSet.has(p));
+
+    const { error } = await supabase
+      .from("photobook_projects")
+      .update({
+        print_sheets: sheetPaths as unknown as Json,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", projectId);
+    if (error) return { message: error.message };
+
+    if (toDelete.length > 0) {
+      await supabase.storage.from("customer-uploads").remove(toDelete);
+    }
+
+    revalidatePath(`/admin/fotolibros/${projectId}`);
+    return {};
   });
 }
