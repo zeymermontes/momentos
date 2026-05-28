@@ -1,11 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PageThumb } from "@/components/photobook/page-preview";
 import type { PhotobookProject, PhotobookPage } from "@/lib/photobook-config";
 import type { CropState } from "@/lib/photobook-config";
+
+// Reference book dimensions. The book itself is REF_BOOK × REF_BOOK; the
+// "spread" reserves a second REF_BOOK to the left so a flipped page (which
+// rotates -180° around the spine) has room to land instead of clipping
+// off-screen on mobile. The whole thing is CSS-scaled to fit narrower
+// viewports without touching the internal layout.
+const REF_BOOK = 320;
+const REF_SPREAD = REF_BOOK * 2;
 
 type Props = {
   project: PhotobookProject;
@@ -50,6 +58,22 @@ export function BookPreview3D({ project, coverUrl, pages }: Props) {
   const canNext = flippedCount < totalLeaves;
   const canPrev = flippedCount > 0;
 
+  // Measure the available width and shrink the book proportionally so a
+  // full open spread (2 × REF_BOOK) always fits the parent.
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const w = entry.contentRect.width;
+      setScale(Math.min(1, w / REF_SPREAD));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   function goNext() {
     if (canNext) setFlippedCount((c) => c + 1);
   }
@@ -59,16 +83,39 @@ export function BookPreview3D({ project, coverUrl, pages }: Props) {
 
   return (
     <div className="flex flex-col items-center gap-6">
-      {/* Book */}
-      <div
-        className="relative"
-        style={{
-          width: 320,
-          height: 320,
-          perspective: 1800,
-          filter: "drop-shadow(0 8px 24px rgba(0,0,0,0.18)) drop-shadow(0 2px 6px rgba(0,0,0,0.1))",
-        }}
-      >
+      {/* Responsive wrapper: measure parent width, CSS-scale the spread */}
+      <div ref={containerRef} className="w-full">
+        <div
+          className="relative mx-auto"
+          style={{
+            width: REF_SPREAD * scale,
+            height: REF_BOOK * scale,
+          }}
+        >
+          {/* Logical-size spread, scaled to fit. transformOrigin top-left
+              so it pins to the parent's top-left corner before mx-auto
+              centers it via the wrapper's computed width above. */}
+          <div
+            className="absolute left-0 top-0"
+            style={{
+              width: REF_SPREAD,
+              height: REF_BOOK,
+              transform: `scale(${scale})`,
+              transformOrigin: "top left",
+            }}
+          >
+            {/* Book sits in the right half of the spread so a leaf flipping
+                -180° around its left edge lands inside the spread, not
+                outside the wrapper. */}
+            <div
+              className="absolute right-0 top-0"
+              style={{
+                width: REF_BOOK,
+                height: REF_BOOK,
+                perspective: 1800,
+                filter: "drop-shadow(0 8px 24px rgba(0,0,0,0.18)) drop-shadow(0 2px 6px rgba(0,0,0,0.1))",
+              }}
+            >
         {/* Book base (back cover always visible) */}
         <div className="absolute inset-0 bg-gray-200" />
 
@@ -119,6 +166,9 @@ export function BookPreview3D({ project, coverUrl, pages }: Props) {
 
         {/* Spine shadow */}
         <div className="absolute left-0 top-0 bottom-0 w-2 bg-gradient-to-r from-black/20 to-transparent z-50 pointer-events-none" />
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Controls */}
