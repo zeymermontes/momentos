@@ -358,7 +358,7 @@ async function renderSheet(
   }
 
   // Draw crop marks only at outer edges of the page grid (not where pages meet)
-  const MARK_LEN = Math.round((2 / 2.54) * PRINT_DPI);
+  const MARK_LEN = Math.round((4 / 2.54) * PRINT_DPI);
   const GAP = Math.round((0.1 / 2.54) * PRINT_DPI);
   ctx.strokeStyle = "#000000";
   ctx.lineWidth = 1;
@@ -583,7 +583,7 @@ async function renderCoverSheet(
   }
 
   // Crop marks on the main canvas using the final placement rectangle
-  const MARK_LEN = Math.round((2 / 2.54) * PRINT_DPI);
+  const MARK_LEN = Math.round((4 / 2.54) * PRINT_DPI);
   const GAP = Math.round((0.1 / 2.54) * PRINT_DPI);
   ctx.strokeStyle = "#000000";
   ctx.lineWidth = 1;
