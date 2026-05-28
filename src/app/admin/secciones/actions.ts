@@ -12,6 +12,7 @@ const SECTION_TYPES = [
   "category_grid",
   "banner_strip",
   "custom_html",
+  "cta_band",
 ] as const;
 
 const SectionSchema = z.object({
@@ -28,8 +29,24 @@ export type SectionActionState = {
 
 function buildConfig(type: string, formData: FormData): Record<string, unknown> {
   switch (type) {
-    case "hero_banners":
-      return { position: "hero" };
+    case "hero_banners": {
+      // Persist empty strings as undefined so the landing's fallback logic
+      // (config -> banner row) can detect "not configured".
+      const str = (key: string) => {
+        const v = String(formData.get(key) ?? "").trim();
+        return v.length > 0 ? v : undefined;
+      };
+      return {
+        position: "hero",
+        title: str("hero_title"),
+        subtitle: str("hero_subtitle"),
+        image_url: str("hero_image_url"),
+        primary_label: str("hero_primary_label"),
+        primary_href: str("hero_primary_href"),
+        secondary_label: str("hero_secondary_label"),
+        secondary_href: str("hero_secondary_href"),
+      };
+    }
     case "banner_strip":
       return { position: "strip" };
     case "featured_products": {
@@ -42,6 +59,18 @@ function buildConfig(type: string, formData: FormData): Record<string, unknown> 
     }
     case "custom_html":
       return { html: String(formData.get("html") ?? "") };
+    case "cta_band": {
+      const str = (key: string) => {
+        const v = String(formData.get(key) ?? "").trim();
+        return v.length > 0 ? v : undefined;
+      };
+      return {
+        title: str("cta_title"),
+        subtitle: str("cta_subtitle"),
+        button_label: str("cta_button_label"),
+        button_href: str("cta_button_href"),
+      };
+    }
     default:
       return {};
   }
