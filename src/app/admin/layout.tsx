@@ -13,6 +13,7 @@ import {
   Sparkles,
   Book,
   Ticket,
+  HelpCircle,
   LogOut,
 } from "lucide-react";
 import { MomentosLogo } from "@/components/momentos-logo";
@@ -30,6 +31,7 @@ const navItems = [
   { href: "/admin/promociones", label: "Promociones", icon: Sparkles },
   { href: "/admin/codigos", label: "Códigos", icon: Ticket },
   { href: "/admin/secciones", label: "Landing", icon: LayoutPanelLeft },
+  { href: "/admin/faq", label: "FAQ", icon: HelpCircle },
   { href: "/admin/sucursales", label: "Sucursales", icon: Building2 },
   { href: "/admin/usuarios", label: "Usuarios", icon: Users },
   { href: "/admin/configuracion", label: "Configuración", icon: Settings },

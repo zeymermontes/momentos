@@ -7,22 +7,24 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { ContactForm } from "@/app/admin/configuracion/_components/contact-form";
+import { PrivacyForm } from "@/app/admin/configuracion/_components/privacy-form";
 import { PhotobookSettingsForm } from "@/app/admin/fotolibros/configuracion/_components/settings-form";
 import { requireAdmin } from "@/lib/auth";
-import { getContactSettings } from "@/lib/settings";
+import { getContactSettings, getPrivacyPolicy } from "@/lib/settings";
 import { getPhotobookSettings } from "@/lib/photobook";
 
 export const metadata = { title: "Configuración" };
 
 export default async function ConfigurationPage() {
   await requireAdmin();
-  const [contact, photobookSettings] = await Promise.all([
+  const [contact, photobookSettings, privacy] = await Promise.all([
     getContactSettings(),
     getPhotobookSettings(),
+    getPrivacyPolicy(),
   ]);
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="mx-auto max-w-3xl space-y-6">
       <AdminPageHeader
         title="Configuración"
         description="Información general del sitio y configuración de productos."
@@ -52,6 +54,20 @@ export default async function ConfigurationPage() {
         </CardHeader>
         <CardContent>
           <PhotobookSettingsForm settings={photobookSettings} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Aviso de privacidad</CardTitle>
+          <CardDescription>
+            Este texto se muestra en{" "}
+            <code>/aviso-privacidad</code> tal cual lo escribas. Acepta HTML
+            simple para encabezados, listas y enlaces.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <PrivacyForm policy={privacy} />
         </CardContent>
       </Card>
     </div>

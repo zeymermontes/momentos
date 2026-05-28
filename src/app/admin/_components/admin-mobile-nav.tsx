@@ -20,6 +20,7 @@ import {
   Sparkles,
   Ticket,
   Book,
+  HelpCircle,
 } from "lucide-react";
 import { MomentosLogo } from "@/components/momentos-logo";
 import { signOutAction } from "@/app/(auth)/actions";
@@ -39,6 +40,7 @@ const ITEMS = [
   { href: "/admin/promociones", label: "Promociones", icon: Sparkles },
   { href: "/admin/codigos", label: "Códigos", icon: Ticket },
   { href: "/admin/secciones", label: "Landing", icon: LayoutPanelLeft },
+  { href: "/admin/faq", label: "FAQ", icon: HelpCircle },
   { href: "/admin/sucursales", label: "Sucursales", icon: Building2 },
   { href: "/admin/usuarios", label: "Usuarios", icon: Users },
   { href: "/admin/configuracion", label: "Configuración", icon: Settings },
