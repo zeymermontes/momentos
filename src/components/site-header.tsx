@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ShoppingCart, User, ShieldCheck, History, Book } from "lucide-react";
 import { MomentosLogo } from "@/components/momentos-logo";
+import { SiteHeaderMobileNav } from "@/components/site-header-mobile-nav";
 import { buttonVariants } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 import { getCartItemCount, getPendingOrderCount } from "@/lib/cart";
@@ -52,12 +53,12 @@ export async function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-      <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto flex h-16 w-full max-w-7xl items-center gap-2 px-4 sm:px-6 lg:px-8">
         <Link href="/" className="flex items-center">
           <MomentosLogo />
         </Link>
 
-        <nav className="hidden md:flex items-center gap-6">
+        <nav className="ml-6 hidden flex-1 items-center gap-6 md:flex">
           <Link
             href="/productos"
             className="text-sm font-medium text-foreground/80 hover:text-foreground transition-colors"
@@ -87,13 +88,13 @@ export async function SiteHeader() {
           </Link>
         </nav>
 
-        <div className="flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-1 sm:gap-2">
           {isAdmin ? (
             <Link
               href="/admin"
               className={cn(
                 buttonVariants({ variant: "secondary", size: "sm" }),
-                "hidden sm:inline-flex",
+                "hidden md:inline-flex",
               )}
             >
               <ShieldCheck className="h-4 w-4" />
@@ -155,12 +156,19 @@ export async function SiteHeader() {
               href="/login"
               className={cn(
                 buttonVariants({ variant: "default", size: "sm" }),
-                "ml-1",
+                "ml-1 hidden sm:inline-flex",
               )}
             >
               Iniciar sesión
             </Link>
           )}
+
+          <SiteHeaderMobileNav
+            items={headerCategories ?? []}
+            isAdmin={isAdmin}
+            isAuthed={Boolean(user)}
+            draftProjectId={draftProject?.id ?? null}
+          />
         </div>
       </div>
     </header>
