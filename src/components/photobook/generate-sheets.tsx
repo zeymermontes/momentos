@@ -46,6 +46,10 @@ export function GenerateSheets({ projectId, sizeCm, pages, userId, title, coverI
   const [zipping, setZipping] = useState(false);
   const [autoTriggered, setAutoTriggered] = useState(false);
   const autoStartedRef = useRef(false);
+  // In-memory cache of the blobs we just generated this session, keyed by
+  // `${side}-${index}`. Lets the "Descargar todo" button zip without
+  // re-downloading from storage right after generating.
+  const blobCacheRef = useRef<Map<string, Blob>>(new Map());
 
   const filledPages = pages.filter((p) => p.image_url);
   const { sheets, layout } = generateSheetPlans(filledPages.length, sizeCm);
@@ -54,6 +58,7 @@ export function GenerateSheets({ projectId, sizeCm, pages, userId, title, coverI
     setGenerating(true);
     setError(null);
     setResults([]);
+    blobCacheRef.current = new Map();
 
     try {
       setProgress("Cargando imágenes...");
@@ -90,7 +95,9 @@ export function GenerateSheets({ projectId, sizeCm, pages, userId, title, coverI
             layout,
             filledPages,
             imageMap,
+            side,
           );
+          blobCacheRef.current.set(`${side}-${si}`, blob);
 
           const path = `${userId}/photobooks/${projectId}/sheets/sheet_${si + 1}_${side}.jpg`;
           setProgress(
@@ -161,6 +168,7 @@ export function GenerateSheets({ projectId, sizeCm, pages, userId, title, coverI
         coverCrop,
         logoImg,
       );
+      blobCacheRef.current.set("cover--1", coverBlob);
 
       setProgress("Subiendo hoja de portada...");
       const coverPath = `${userId}/photobooks/${projectId}/sheets/cover_${Date.now()}.jpg`;
@@ -214,8 +222,10 @@ export function GenerateSheets({ projectId, sizeCm, pages, userId, title, coverI
       const zip = new JSZip();
 
       for (const r of results) {
-        const resp = await fetch(r.url);
-        const blob = await resp.blob();
+        // Prefer the in-memory blob (just generated) to avoid a roundtrip
+        // through storage; fall back to fetching the signed URL.
+        const cached = blobCacheRef.current.get(`${r.side}-${r.index}`);
+        const blob = cached ?? (await (await fetch(r.url)).blob());
         const name = r.side === "cover"
           ? "portada_contraportada.jpg"
           : `hoja_${r.index + 1}_${r.side === "front" ? "frente" : "reverso"}.jpg`;
@@ -328,6 +338,7 @@ async function renderSheet(
   layout: SheetLayout,
   pages: PhotobookPage[],
   imageMap: Map<number, HTMLImageElement>,
+  side: "front" | "back",
 ): Promise<Blob> {
   const canvas = document.createElement("canvas");
   canvas.width = SHEET_W_PX;
@@ -357,62 +368,70 @@ async function renderSheet(
     drawBookPage(ctx, img, page.crop, x, y, pagePx);
   }
 
-  // Draw crop marks only at outer edges of the page grid (not where pages meet)
-  const MARK_LEN = Math.round((4 / 2.54) * PRINT_DPI);
-  const GAP = Math.round((0.1 / 2.54) * PRINT_DPI);
+  // Crop marks only on the front side — the back is plain so the printed
+  // photo doesn't get marred on both sides. Front marks are enough for the
+  // cutter to align both sides since front/back are registered.
+  if (side === "back") {
+    return new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => (blob ? resolve(blob) : reject(new Error("Canvas toBlob failed"))),
+        "image/jpeg",
+        0.95,
+      );
+    });
+  }
+
+  // L-shaped crop marks at every page corner, pointing INTO the page area.
+  // Skip corners where 4 pages meet — those don't need a guide because all
+  // 4 adjacent pages already cluster a cut indicator there.
+  const MARK_LEN = Math.round((0.5 / 2.54) * PRINT_DPI);
   ctx.strokeStyle = "#000000";
   ctx.lineWidth = 1;
 
-  const occupiedCols = new Set<number>();
-  const occupiedRows = new Set<number>();
+  const occupied = new Set<string>();
   for (let i = 0; i < slots.length; i++) {
     if (!slots[i]) continue;
-    occupiedCols.add(i % cols);
-    occupiedRows.add(Math.floor(i / cols));
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    occupied.add(`${col},${row}`);
   }
 
-  // Horizontal crop marks along top and bottom edges of each row
-  for (const row of occupiedRows) {
-    const y0 = marginY + row * pagePx;
-    const y1 = y0 + pagePx;
-    for (const col of occupiedCols) {
-      const xL = marginX + col * pagePx;
-      const xR = xL + pagePx;
+  // True when the grid intersection at (gx, gy) is surrounded by occupied
+  // pages on all four sides (a 4-way junction).
+  const isFourWayJunction = (gx: number, gy: number) =>
+    occupied.has(`${gx - 1},${gy - 1}`) &&
+    occupied.has(`${gx},${gy - 1}`) &&
+    occupied.has(`${gx - 1},${gy}`) &&
+    occupied.has(`${gx},${gy}`);
 
-      // Left edge marks (only if this is the leftmost column)
-      if (!occupiedCols.has(col - 1)) {
-        // Top-left horizontal
-        ctx.beginPath(); ctx.moveTo(xL - GAP - MARK_LEN, y0); ctx.lineTo(xL - GAP, y0); ctx.stroke();
-        // Bottom-left horizontal
-        ctx.beginPath(); ctx.moveTo(xL - GAP - MARK_LEN, y1); ctx.lineTo(xL - GAP, y1); ctx.stroke();
-      }
+  for (let i = 0; i < slots.length; i++) {
+    if (!slots[i]) continue;
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const xL = marginX + col * pagePx;
+    const xR = xL + pagePx;
+    const yT = marginY + row * pagePx;
+    const yB = yT + pagePx;
 
-      // Right edge marks (only if this is the rightmost column)
-      if (!occupiedCols.has(col + 1)) {
-        ctx.beginPath(); ctx.moveTo(xR + GAP, y0); ctx.lineTo(xR + GAP + MARK_LEN, y0); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(xR + GAP, y1); ctx.lineTo(xR + GAP + MARK_LEN, y1); ctx.stroke();
-      }
+    // Top-left corner — grid intersection (col, row)
+    if (!isFourWayJunction(col, row)) {
+      ctx.beginPath(); ctx.moveTo(xL, yT); ctx.lineTo(xL + MARK_LEN, yT); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(xL, yT); ctx.lineTo(xL, yT + MARK_LEN); ctx.stroke();
     }
-
-    // Top edge vertical marks (only if this is the topmost row)
-    if (!occupiedRows.has(row - 1)) {
-      for (const col of occupiedCols) {
-        const xL = marginX + col * pagePx;
-        const xR = xL + pagePx;
-        ctx.beginPath(); ctx.moveTo(xL, y0 - GAP - MARK_LEN); ctx.lineTo(xL, y0 - GAP); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(xR, y0 - GAP - MARK_LEN); ctx.lineTo(xR, y0 - GAP); ctx.stroke();
-      }
+    // Top-right corner — grid intersection (col + 1, row)
+    if (!isFourWayJunction(col + 1, row)) {
+      ctx.beginPath(); ctx.moveTo(xR, yT); ctx.lineTo(xR - MARK_LEN, yT); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(xR, yT); ctx.lineTo(xR, yT + MARK_LEN); ctx.stroke();
     }
-
-    // Bottom edge vertical marks (only if this is the bottommost row)
-    const y1row = marginY + row * pagePx + pagePx;
-    if (!occupiedRows.has(row + 1)) {
-      for (const col of occupiedCols) {
-        const xL = marginX + col * pagePx;
-        const xR = xL + pagePx;
-        ctx.beginPath(); ctx.moveTo(xL, y1row + GAP); ctx.lineTo(xL, y1row + GAP + MARK_LEN); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(xR, y1row + GAP); ctx.lineTo(xR, y1row + GAP + MARK_LEN); ctx.stroke();
-      }
+    // Bottom-left corner — grid intersection (col, row + 1)
+    if (!isFourWayJunction(col, row + 1)) {
+      ctx.beginPath(); ctx.moveTo(xL, yB); ctx.lineTo(xL + MARK_LEN, yB); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(xL, yB); ctx.lineTo(xL, yB - MARK_LEN); ctx.stroke();
+    }
+    // Bottom-right corner — grid intersection (col + 1, row + 1)
+    if (!isFourWayJunction(col + 1, row + 1)) {
+      ctx.beginPath(); ctx.moveTo(xR, yB); ctx.lineTo(xR - MARK_LEN, yB); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(xR, yB); ctx.lineTo(xR, yB - MARK_LEN); ctx.stroke();
     }
   }
 
@@ -490,9 +509,13 @@ async function renderCoverSheet(
   const layoutW = pagePx + spinePx + pagePx;
   const layoutH = pagePx;
 
-  // Decide orientation: rotate 90° if natural layout doesn't fit horizontally
+  // Always prefer rotating so the long dimension of the cover (back + spine +
+  // front) aligns with the long dimension of the sheet (19"). This gives the
+  // most room and avoids tight fits for larger photobook sizes. Fall back to
+  // the natural horizontal layout only if the rotated layout doesn't fit.
+  const fitsRotated = layoutW <= SHEET_H_PX && layoutH <= SHEET_W_PX;
   const fitsHorizontal = layoutW <= SHEET_W_PX && layoutH <= SHEET_H_PX;
-  const rotate = !fitsHorizontal;
+  const rotate = fitsRotated || !fitsHorizontal;
 
   // Render the cover content to an offscreen canvas in natural orientation,
   // then paste it onto the sheet (rotated or not).
@@ -582,9 +605,9 @@ async function renderCoverSheet(
     ctx.drawImage(off, sheetX, sheetY);
   }
 
-  // Crop marks on the main canvas using the final placement rectangle
-  const MARK_LEN = Math.round((4 / 2.54) * PRINT_DPI);
-  const GAP = Math.round((0.1 / 2.54) * PRINT_DPI);
+  // Single continuous border around the full piece (back + spine + cover) so
+  // the printer sees one rectangle to cut. We intentionally do NOT draw fold
+  // marks at the spine edges — the spine is part of the same rectangle.
   ctx.strokeStyle = "#000000";
   ctx.lineWidth = 1;
 
@@ -593,36 +616,7 @@ async function renderCoverSheet(
   const top = sheetY;
   const bottom = sheetY + finalH;
 
-  // Outer crop marks (only at the 4 corners of the full cover sheet layout)
-  // Top-left
-  ctx.beginPath(); ctx.moveTo(left - GAP - MARK_LEN, top); ctx.lineTo(left - GAP, top); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(left, top - GAP - MARK_LEN); ctx.lineTo(left, top - GAP); ctx.stroke();
-  // Top-right
-  ctx.beginPath(); ctx.moveTo(right + GAP, top); ctx.lineTo(right + GAP + MARK_LEN, top); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(right, top - GAP - MARK_LEN); ctx.lineTo(right, top - GAP); ctx.stroke();
-  // Bottom-left
-  ctx.beginPath(); ctx.moveTo(left - GAP - MARK_LEN, bottom); ctx.lineTo(left - GAP, bottom); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(left, bottom + GAP); ctx.lineTo(left, bottom + GAP + MARK_LEN); ctx.stroke();
-  // Bottom-right
-  ctx.beginPath(); ctx.moveTo(right + GAP, bottom); ctx.lineTo(right + GAP + MARK_LEN, bottom); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(right, bottom + GAP); ctx.lineTo(right, bottom + GAP + MARK_LEN); ctx.stroke();
-
-  // Fold marks at the spine edges. In natural orientation these are vertical
-  // marks at x = pagePx and x = pagePx + spinePx. After rotation they become
-  // horizontal marks at y offsets from the top of the layout.
-  const foldOffsets = [pagePx, pagePx + spinePx];
-  for (const offset of foldOffsets) {
-    if (rotate) {
-      // After 90° rotation, x-offset on natural layout becomes y-offset from top of placement
-      const y = top + offset;
-      ctx.beginPath(); ctx.moveTo(left - GAP - MARK_LEN, y); ctx.lineTo(left - GAP, y); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(right + GAP, y); ctx.lineTo(right + GAP + MARK_LEN, y); ctx.stroke();
-    } else {
-      const x = left + offset;
-      ctx.beginPath(); ctx.moveTo(x, top - GAP - MARK_LEN); ctx.lineTo(x, top - GAP); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(x, bottom + GAP); ctx.lineTo(x, bottom + GAP + MARK_LEN); ctx.stroke();
-    }
-  }
+  ctx.strokeRect(left, top, right - left, bottom - top);
 
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
