@@ -6,12 +6,14 @@ import {
   Truck,
   CreditCard,
   ExternalLink,
+  FileText,
   Package,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 import { requireUser } from "@/lib/auth";
+import { getPendingVoucher } from "@/lib/mercadopago";
 import { cn, formatMXN } from "@/lib/utils";
 import {
   ORDER_STATUS_LABEL,
@@ -72,6 +74,15 @@ export default async function OrderDetailPage({ params }: { params: Params }) {
   const addr = order.address_snapshot as Record<string, string> | null;
   const canResumePayment =
     order.status === "pending" && order.payment_status !== "approved";
+  const voucher = canResumePayment
+    ? await getPendingVoucher(order.payment_id ?? null)
+    : null;
+  const voucherExpiresAt = voucher?.expirationDate
+    ? new Date(voucher.expirationDate).toLocaleString("es-MX", {
+        dateStyle: "long",
+        timeStyle: "short",
+      })
+    : null;
 
   return (
     <div className="space-y-4">
@@ -96,7 +107,62 @@ export default async function OrderDetailPage({ params }: { params: Params }) {
         </Badge>
       </header>
 
-      {canResumePayment ? (
+      {canResumePayment && voucher ? (
+        <div className="space-y-3 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm">
+          <div className="flex items-start gap-2 text-amber-900">
+            <FileText className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <p className="font-semibold">
+                Tienes un pago en efectivo pendiente
+              </p>
+              <p className="text-amber-800">
+                Presenta el comprobante en la sucursal para finalizar tu
+                compra.
+              </p>
+            </div>
+          </div>
+
+          {voucher.ticketUrl ? (
+            <a
+              href={voucher.ticketUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={cn(buttonVariants({ size: "sm" }), "w-full gap-2 sm:w-auto")}
+            >
+              <FileText className="h-3.5 w-3.5" />
+              Ver comprobante de pago
+            </a>
+          ) : null}
+
+          {voucher.barcodeContent ? (
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-amber-900">
+                Código de referencia
+              </p>
+              <code className="block w-full break-all rounded-md border border-amber-300 bg-white px-3 py-2 font-mono text-xs">
+                {voucher.barcodeContent}
+              </code>
+            </div>
+          ) : null}
+
+          {voucherExpiresAt ? (
+            <p className="text-xs text-amber-900">
+              <strong>Vence:</strong> {voucherExpiresAt}
+            </p>
+          ) : null}
+
+          <p className="text-xs text-amber-800">
+            ¿No vas a pagar en efectivo?{" "}
+            <Link
+              href={`/checkout/pagar/${order.id}`}
+              className="font-medium underline"
+            >
+              Elige otro método de pago
+            </Link>
+            .
+          </p>
+        </div>
+      ) : canResumePayment ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm">
           <div className="flex items-start gap-2 text-amber-900">
             <CreditCard className="mt-0.5 h-4 w-4 shrink-0" />

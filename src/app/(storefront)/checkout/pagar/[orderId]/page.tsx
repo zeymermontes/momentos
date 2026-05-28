@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, FileText } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { PaymentBrick } from "@/app/(storefront)/checkout/_components/payment-brick";
 import { requireUser } from "@/lib/auth";
 import { env } from "@/lib/env";
-import { formatMXN } from "@/lib/utils";
+import { getPendingVoucher } from "@/lib/mercadopago";
+import { cn, formatMXN } from "@/lib/utils";
 import {
   ORDER_STATUS_LABEL,
   ORDER_STATUS_BADGE,
@@ -17,18 +18,22 @@ export const metadata = { title: "Continuar pago" };
 export const dynamic = "force-dynamic";
 
 type Params = Promise<{ orderId: string }>;
+type SearchParams = Promise<{ nuevo?: string }>;
 
 export default async function ResumePaymentPage({
   params,
+  searchParams,
 }: {
   params: Params;
+  searchParams: SearchParams;
 }) {
   const { orderId } = await params;
+  const { nuevo } = await searchParams;
   const { supabase, user } = await requireUser();
 
   const { data: order } = await supabase
     .from("orders")
-    .select("id, status, total, payment_status, fulfillment, created_at")
+    .select("id, status, total, payment_status, payment_id, fulfillment, created_at")
     .eq("id", orderId)
     .eq("user_id", user.id)
     .maybeSingle();
@@ -40,6 +45,18 @@ export default async function ResumePaymentPage({
   if (order.status !== "pending" || order.payment_status === "approved") {
     redirect(`/mi-cuenta/pedidos/${order.id}`);
   }
+
+  // If there's an existing cash voucher and the user didn't explicitly ask
+  // for a new payment method, show the voucher instead of a fresh brick.
+  const voucher = nuevo
+    ? null
+    : await getPendingVoucher(order.payment_id ?? null);
+  const voucherExpiresAt = voucher?.expirationDate
+    ? new Date(voucher.expirationDate).toLocaleString("es-MX", {
+        dateStyle: "long",
+        timeStyle: "short",
+      })
+    : null;
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6 lg:px-8">
@@ -75,15 +92,72 @@ export default async function ResumePaymentPage({
         </CardContent>
       </Card>
 
-      <div className="mt-6 rounded-xl border border-border bg-card p-5">
-        <h2 className="mb-4 text-lg font-semibold">Datos de pago</h2>
-        <PaymentBrick
-          orderId={order.id}
-          total={Number(order.total)}
-          publicKey={env.MERCADOPAGO_PUBLIC_KEY}
-          email={user.email ?? ""}
-        />
-      </div>
+      {voucher ? (
+        <div className="mt-6 space-y-4 rounded-xl border border-amber-200 bg-amber-50 p-5">
+          <div className="flex items-start gap-2 text-amber-900">
+            <FileText className="mt-0.5 h-5 w-5 shrink-0" />
+            <div>
+              <h2 className="text-lg font-semibold">
+                Comprobante de pago en efectivo
+              </h2>
+              <p className="text-sm text-amber-800">
+                Ya generamos un comprobante para este pedido. Preséntalo en la
+                sucursal para finalizar tu compra.
+              </p>
+            </div>
+          </div>
+
+          {voucher.ticketUrl ? (
+            <a
+              href={voucher.ticketUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={cn(buttonVariants({ size: "lg" }), "w-full gap-2")}
+            >
+              <FileText className="h-4 w-4" />
+              Abrir comprobante de pago
+            </a>
+          ) : null}
+
+          {voucher.barcodeContent ? (
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-amber-900">
+                Código de referencia
+              </p>
+              <code className="block w-full break-all rounded-md border border-amber-300 bg-white px-3 py-2 font-mono text-xs">
+                {voucher.barcodeContent}
+              </code>
+            </div>
+          ) : null}
+
+          {voucherExpiresAt ? (
+            <p className="text-sm text-amber-900">
+              <strong>Vence:</strong> {voucherExpiresAt}
+            </p>
+          ) : null}
+
+          <div className="border-t border-amber-200 pt-3 text-sm text-amber-800">
+            ¿Prefieres pagar con otro método?{" "}
+            <Link
+              href={`/checkout/pagar/${order.id}?nuevo=1`}
+              className="font-medium underline"
+            >
+              Elige otro método de pago
+            </Link>
+            .
+          </div>
+        </div>
+      ) : (
+        <div className="mt-6 rounded-xl border border-border bg-card p-5">
+          <h2 className="mb-4 text-lg font-semibold">Datos de pago</h2>
+          <PaymentBrick
+            orderId={order.id}
+            total={Number(order.total)}
+            publicKey={env.MERCADOPAGO_PUBLIC_KEY}
+            email={user.email ?? ""}
+          />
+        </div>
+      )}
 
       <Link
         href="/mi-cuenta/pedidos"

@@ -16,8 +16,11 @@ export async function createProjectAction(
   return runAction(async () => {
     const sizeCm = Number(formData.get("size_cm"));
     const pageCount = Number(formData.get("page_count"));
-    if (![15, 20, 30].includes(sizeCm)) return { message: "Tamaño inválido." };
-    if (![20, 40, 60].includes(pageCount)) return { message: "Número de páginas inválido." };
+
+    const { getPhotobookSettings } = await import("@/lib/photobook");
+    const settings = await getPhotobookSettings();
+    if (!settings.sizes.some((s) => s.cm === sizeCm)) return { message: "Tamaño inválido." };
+    if (!settings.page_counts.includes(pageCount)) return { message: "Número de páginas inválido." };
 
     const { supabase, user } = await requireUser();
 
@@ -43,7 +46,7 @@ export async function createProjectAction(
     }));
     await supabase.from("photobook_pages").insert(pages);
 
-    redirect(`/fotolibro/${project.id}/configuracion`);
+    redirect(`/fotolibro/${project.id}/portada`);
   });
 }
 
@@ -232,7 +235,9 @@ export async function changePageCountAction(
   newPageCount: number,
 ): Promise<ActionState & { newPages?: { id: string; sort_order: number }[]; removedIds?: string[] }> {
   return runAction(async () => {
-    if (![20, 40, 60].includes(newPageCount)) return { message: "Opción inválida." };
+    const { getPhotobookSettings } = await import("@/lib/photobook");
+    const settings = await getPhotobookSettings();
+    if (!settings.page_counts.includes(newPageCount)) return { message: "Opción inválida." };
 
     const { supabase } = await requireUser();
     const { data: project } = await supabase
