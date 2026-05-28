@@ -72,7 +72,7 @@ export function ProjectConfigForm({
               <span className="font-semibold">{s.label}</span>
               <span className="text-xs text-muted-foreground">{s.sublabel}</span>
               <span className="text-xs text-primary font-medium">
-                {formatMXN(s.price_per_page)}/pág
+                desde {formatMXN(Math.min(...Object.values(s.prices ?? { 0: 0 })))}
               </span>
             </button>
           ))}

@@ -26,10 +26,26 @@ export function PhotobookSettingsForm({
     );
   }
 
+  function updateSizePrice(sizeIndex: number, pageCount: number, price: number) {
+    setSizes((prev) =>
+      prev.map((s, i) => {
+        if (i !== sizeIndex) return s;
+        const prices = { ...(s.prices ?? {}), [pageCount]: price };
+        return { ...s, prices };
+      }),
+    );
+  }
+
   function addSize() {
     setSizes((prev) => [
       ...prev,
-      { cm: 25, label: "Nuevo", sublabel: "25 × 25 cm", price_per_page: 12, hardcover_price: 150 },
+      {
+        cm: 25,
+        label: "Nuevo",
+        sublabel: "25 × 25 cm",
+        hardcover_price: 150,
+        prices: Object.fromEntries(pageCounts.map((c) => [c, c * 12])),
+      },
     ]);
   }
 
@@ -41,6 +57,24 @@ export function PhotobookSettingsForm({
     const n = Number(newPageCount);
     if (n > 0 && !pageCounts.includes(n)) {
       setPageCounts((prev) => [...prev, n].sort((a, b) => a - b));
+      // Seed a starting price for the new page count on every size, based on
+      // the average price-per-page from existing entries of that size.
+      setSizes((prev) =>
+        prev.map((s) => {
+          const entries = Object.entries(s.prices ?? {});
+          const avgPerPage =
+            entries.length > 0
+              ? entries.reduce(
+                  (acc, [pc, price]) => acc + Number(price) / Number(pc),
+                  0,
+                ) / entries.length
+              : 10;
+          return {
+            ...s,
+            prices: { ...(s.prices ?? {}), [n]: Math.round(avgPerPage * n) },
+          };
+        }),
+      );
       setNewPageCount("");
     }
   }
@@ -124,7 +158,7 @@ export function PhotobookSettingsForm({
                     onChange={(e) => updateSize(i, "label", e.target.value)}
                   />
                 </div>
-                <div>
+                <div className="col-span-2">
                   <Label>Subtítulo</Label>
                   <Input
                     value={size.sublabel}
@@ -132,17 +166,7 @@ export function PhotobookSettingsForm({
                     placeholder="20 × 20 cm"
                   />
                 </div>
-                <div>
-                  <Label>Precio por página (MXN)</Label>
-                  <Input
-                    type="number"
-                    value={size.price_per_page}
-                    onChange={(e) => updateSize(i, "price_per_page", Number(e.target.value))}
-                    min={0}
-                    step={0.5}
-                  />
-                </div>
-                <div>
+                <div className="col-span-2">
                   <Label>Costo pasta dura (MXN)</Label>
                   <Input
                     type="number"
@@ -151,6 +175,35 @@ export function PhotobookSettingsForm({
                     min={0}
                   />
                 </div>
+              </div>
+
+              {/* Price matrix per page count */}
+              <div className="space-y-2 border-t border-border pt-3">
+                <Label>Precios por número de páginas (MXN)</Label>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {pageCounts.map((count) => {
+                    const value = size.prices?.[count] ?? 0;
+                    return (
+                      <div key={count} className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">
+                          {count} páginas
+                        </Label>
+                        <Input
+                          type="number"
+                          value={value}
+                          onChange={(e) =>
+                            updateSizePrice(i, count, Number(e.target.value))
+                          }
+                          min={0}
+                          step={0.5}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  El precio no es proporcional — define cuánto cuesta cada combinación.
+                </p>
               </div>
             </div>
           ))}
