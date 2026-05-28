@@ -47,10 +47,10 @@ export function CoverEditor({ project, coverUrl, userId }: Props) {
       const { full, thumb } = await optimizeImage(file);
       const supabase = createClient();
       const ts = Date.now();
-      const fullPath = `${userId}/photobooks/${project.id}/cover_${ts}.jpg`;
+      const fullPath = `${userId}/photobooks/${project.id}/cover_${ts}.webp`;
       const tPath = `${userId}/photobooks/${project.id}/cover_${ts}_thumb.webp`;
       const [{ error: e1 }, { error: e2 }] = await Promise.all([
-        supabase.storage.from("customer-uploads").upload(fullPath, full, { contentType: "image/jpeg" }),
+        supabase.storage.from("customer-uploads").upload(fullPath, full, { contentType: "image/webp" }),
         supabase.storage.from("customer-uploads").upload(tPath, thumb, { contentType: "image/webp" }),
       ]);
       if (e1) throw e1;

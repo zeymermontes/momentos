@@ -45,10 +45,10 @@ export function PageEditor({ projectId, page, userId }: Props) {
       const { full, thumb } = await optimizeImage(file);
       const supabase = createClient();
       const ts = Date.now();
-      const fullPath = `${userId}/photobooks/${projectId}/pages/${String(page.sort_order).padStart(3, "0")}_${ts}.jpg`;
+      const fullPath = `${userId}/photobooks/${projectId}/pages/${String(page.sort_order).padStart(3, "0")}_${ts}.webp`;
       const tPath = `${userId}/photobooks/${projectId}/pages/${String(page.sort_order).padStart(3, "0")}_${ts}_thumb.webp`;
       const [{ error: e1 }, { error: e2 }] = await Promise.all([
-        supabase.storage.from("customer-uploads").upload(fullPath, full, { contentType: "image/jpeg" }),
+        supabase.storage.from("customer-uploads").upload(fullPath, full, { contentType: "image/webp" }),
         supabase.storage.from("customer-uploads").upload(tPath, thumb, { contentType: "image/webp" }),
       ]);
       if (e1) throw e1;
@@ -82,11 +82,11 @@ export function PageEditor({ projectId, page, userId }: Props) {
   return (
     <div className="mx-auto grid w-full max-w-4xl gap-8 lg:grid-cols-2">
       {/* Editor */}
-      <div className="space-y-4">
+      <div className="min-w-0 space-y-4">
         <h2 className="text-xl font-bold">Editar página {page.sort_order}</h2>
 
         {imageUrl && imgDims ? (
-          <div className="relative">
+          <div className="relative w-full max-w-full">
             <ImageCropper
               src={imageUrl}
               imgWidth={imgDims.width}
@@ -160,7 +160,7 @@ export function PageEditor({ projectId, page, userId }: Props) {
       </div>
 
       {/* Preview + save */}
-      <div className="space-y-4">
+      <div className="min-w-0 space-y-4">
         <h2 className="text-xl font-bold">Vista previa</h2>
 
         <PagePreview

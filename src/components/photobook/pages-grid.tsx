@@ -6,6 +6,7 @@ import {
   DndContext,
   closestCenter,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -55,8 +56,14 @@ export function PagesGrid({ projectId, pages: initialPages, userId, currentPageC
   const [pageCount, setPageCount] = useState(currentPageCount);
   const [resizePopup, setResizePopup] = useState(false);
 
+  // Pointer covers mouse/pen; touch needs its own sensor with a small
+  // hold delay so a tap doesn't accidentally start a drag and the browser
+  // can still scroll the page when the user isn't on the handle.
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 150, tolerance: 5 },
+    }),
   );
 
   function handleDragEnd(event: DragEndEvent) {
@@ -92,10 +99,10 @@ export function PagesGrid({ projectId, pages: initialPages, userId, currentPageC
       try {
         const { full, thumb } = await optimizeImage(file);
         const ts = `${Date.now()}_${i}`;
-        const fullPath = `${userId}/photobooks/${projectId}/pages/${String(page.sort_order).padStart(3, "0")}_${ts}.jpg`;
+        const fullPath = `${userId}/photobooks/${projectId}/pages/${String(page.sort_order).padStart(3, "0")}_${ts}.webp`;
         const tPath = `${userId}/photobooks/${projectId}/pages/${String(page.sort_order).padStart(3, "0")}_${ts}_thumb.webp`;
         const [{ error: e1 }, { error: e2 }] = await Promise.all([
-          supabase.storage.from("customer-uploads").upload(fullPath, full, { contentType: "image/jpeg" }),
+          supabase.storage.from("customer-uploads").upload(fullPath, full, { contentType: "image/webp" }),
           supabase.storage.from("customer-uploads").upload(tPath, thumb, { contentType: "image/webp" }),
         ]);
         if (e1) throw e1;
@@ -460,7 +467,7 @@ function SortablePage({
             src={page.thumb_url ?? page.image_url!}
             crop={page.crop}
           />
-          <div className="absolute right-1 bottom-1 hidden items-center gap-1 group-hover:flex">
+          <div className="absolute right-1 bottom-1 flex items-center gap-1 sm:hidden sm:group-hover:flex">
             <Link
               href={`/fotolibro/${projectId}/editar/${page.sort_order}`}
               className="rounded-md bg-background/90 p-1.5 shadow hover:bg-background"
@@ -482,11 +489,16 @@ function SortablePage({
         </div>
       )}
 
-      {/* Drag handle */}
+      {/* Drag handle. `touchAction: none` is required so the browser's
+          built-in scroll/zoom gestures don't eat the touchstart and let
+          the TouchSensor's delay fire. Always visible on mobile (no
+          hover), shown on hover only at sm+. */}
       <button
         {...attributes}
         {...listeners}
-        className="absolute left-1 top-1 hidden cursor-grab rounded-md bg-background/90 p-1 shadow group-hover:block"
+        style={{ touchAction: "none" }}
+        aria-label="Arrastrar para reordenar"
+        className="absolute left-1 top-1 block cursor-grab rounded-md bg-background/90 p-1 shadow sm:hidden sm:group-hover:block"
       >
         <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
       </button>
