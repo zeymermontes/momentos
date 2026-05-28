@@ -2,10 +2,10 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { requireUser } from "@/lib/auth";
-import { getProject, getProjectPages, getCoverUrl } from "@/lib/photobook";
+import { getProject, getProjectPages, getCoverUrl, getPhotobookSettings } from "@/lib/photobook";
 import { StepIndicator } from "@/components/photobook/step-indicator";
 import { BookPreview3D } from "@/components/photobook/book-preview-3d";
-import { AddToCartPlaceholder } from "./_components/add-to-cart-placeholder";
+import { AddToCartButton } from "./_components/add-to-cart-placeholder";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -22,9 +22,10 @@ export default async function PreviewPage({
   const project = await getProject(projectId);
   if (!project) notFound();
 
-  const [pages, coverUrl] = await Promise.all([
+  const [pages, coverUrl, settings] = await Promise.all([
     getProjectPages(projectId),
     getCoverUrl(project),
+    getPhotobookSettings(),
   ]);
 
   const filledCount = pages.filter((p) => p.image_url).length;
@@ -47,7 +48,14 @@ export default async function PreviewPage({
             Editar páginas
           </Link>
 
-          {filledCount > 0 && <AddToCartPlaceholder />}
+          {filledCount > 0 && (
+            <AddToCartButton
+              projectId={projectId}
+              sizeCm={project.size_cm}
+              pageCount={project.page_count}
+              settings={settings}
+            />
+          )}
         </div>
       </div>
     </>

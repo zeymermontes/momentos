@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { Book } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { getPhotobookSettings } from "@/lib/photobook";
 import { ConfigForm } from "./_components/config-form";
 
 export const metadata = { title: "Crear fotolibro" };
@@ -11,6 +12,19 @@ export default async function PhotobookConfigPage() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login?next=/fotolibro");
+
+  const { data: existing } = await supabase
+    .from("photobook_projects")
+    .select("id")
+    .eq("user_id", user.id)
+    .in("status", ["draft", "completed"])
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (existing) redirect(`/fotolibro/${existing.id}/portada`);
+
+  const settings = await getPhotobookSettings();
+  if (!settings.enabled) redirect("/");
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6">
@@ -25,7 +39,7 @@ export default async function PhotobookConfigPage() {
         </p>
       </div>
 
-      <ConfigForm />
+      <ConfigForm settings={settings} />
     </div>
   );
 }

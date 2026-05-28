@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ShoppingCart, User, ShieldCheck, History } from "lucide-react";
+import { ShoppingCart, User, ShieldCheck, History, Book } from "lucide-react";
 import { MomentosLogo } from "@/components/momentos-logo";
 import { buttonVariants } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
@@ -37,6 +37,19 @@ export async function SiteHeader() {
     getPendingOrderCount(),
   ]);
 
+  let draftProject: { id: string } | null = null;
+  if (user) {
+    const { data } = await supabase
+      .from("photobook_projects")
+      .select("id")
+      .eq("user_id", user.id)
+      .in("status", ["draft", "completed"])
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    draftProject = data;
+  }
+
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
       <div className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -52,7 +65,7 @@ export async function SiteHeader() {
             Productos
           </Link>
           <Link
-            href="/fotolibro"
+            href={draftProject ? `/fotolibro/${draftProject.id}/portada` : "/fotolibro"}
             className="text-sm font-medium text-primary hover:text-primary/80 transition-colors"
           >
             Fotolibro
@@ -98,6 +111,20 @@ export async function SiteHeader() {
               <History className="h-5 w-5" />
               <span className="absolute -right-0.5 -top-0.5 grid h-5 min-w-5 place-items-center rounded-full bg-amber-500 px-1 text-[10px] font-bold text-white">
                 {pendingOrderCount}
+              </span>
+            </Link>
+          ) : null}
+
+          {draftProject ? (
+            <Link
+              href={`/fotolibro/${draftProject.id}/portada`}
+              aria-label="Fotolibro en progreso"
+              title="Continuar fotolibro"
+              className="relative inline-flex h-10 w-10 items-center justify-center rounded-md hover:bg-muted"
+            >
+              <Book className="h-5 w-5" />
+              <span className="absolute -right-0.5 -top-0.5 grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                1
               </span>
             </Link>
           ) : null}

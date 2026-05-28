@@ -29,7 +29,8 @@ export default async function CartPage() {
     unit_price: number;
     uploaded_file_url: string | null;
     customization: unknown;
-    product_id: string;
+    preview_url: string | null;
+    product_id: string | null;
     products: {
       slug: string;
       name: string;
@@ -42,7 +43,7 @@ export default async function CartPage() {
   const { data } = await cart.supabase
     .from("cart_items")
     .select(
-      "id, quantity, unit_price, uploaded_file_url, customization, product_id, products!product_id(slug, name, images, category_id), product_variants(name)",
+      "id, quantity, unit_price, uploaded_file_url, customization, preview_url, product_id, products!product_id(slug, name, images, category_id), product_variants(name)",
     )
     .eq("cart_id", cart.cartId)
     .order("created_at", { ascending: false });
@@ -60,7 +61,7 @@ export default async function CartPage() {
   // Pull additional category links for any products in the cart so the
   // promotion engine can credit multi-category items toward category-scoped
   // promos.
-  const productIds = Array.from(new Set(items.map((i) => i.product_id)));
+  const productIds = Array.from(new Set(items.map((i) => i.product_id).filter(Boolean))) as string[];
   const { data: extraCategoryLinks } = await cart.supabase
     .from("product_categories")
     .select("product_id, category_id")
@@ -72,13 +73,19 @@ export default async function CartPage() {
     extraCatsByProduct.set(link.product_id, arr);
   }
 
-  const promoItems: CartItemForPromo[] = items.map((i) => ({
-    product_id: i.product_id,
-    category_id: i.products?.category_id ?? null,
-    additional_category_ids: extraCatsByProduct.get(i.product_id) ?? [],
-    quantity: Number(i.quantity),
-    unit_price: Number(i.unit_price),
-  }));
+  const promoItems: CartItemForPromo[] = items.map((i) => {
+    const c = i.customization && typeof i.customization === "object"
+      ? (i.customization as Record<string, unknown>)
+      : null;
+    return {
+      product_id: i.product_id ?? "",
+      category_id: i.products?.category_id ?? null,
+      additional_category_ids: i.product_id ? (extraCatsByProduct.get(i.product_id) ?? []) : [],
+      quantity: Number(i.quantity),
+      unit_price: Number(i.unit_price),
+      is_photobook: c?.type === "photobook",
+    };
+  });
 
   // Shipping is unknown until checkout (depends on ship vs pickup). We
   // evaluate with 0 here for the "applied" amounts; the real number lands in
@@ -96,25 +103,34 @@ export default async function CartPage() {
             {items.map((i) => {
               const product = i.products;
               const variant = i.product_variants;
-              const imgs = Array.isArray(product?.images)
-                ? (product?.images as string[])
-                : [];
               const customization =
                 i.customization && typeof i.customization === "object"
                   ? (i.customization as Record<string, unknown>)
                   : null;
+              const isPhotobook = customization?.type === "photobook";
+              const imgs = Array.isArray(product?.images)
+                ? (product?.images as string[])
+                : [];
               return (
                 <CartItemRow
                   key={i.id}
                   id={i.id}
-                  productSlug={product?.slug ?? null}
-                  productName={product?.name ?? "Producto"}
-                  variantName={variant?.name ?? null}
+                  productSlug={isPhotobook ? null : (product?.slug ?? null)}
+                  productName={
+                    isPhotobook
+                      ? `Fotolibro — ${customization?.title ?? "Sin título"}`
+                      : (product?.name ?? "Producto")
+                  }
+                  variantName={
+                    isPhotobook
+                      ? `${customization?.size_cm}×${customization?.size_cm} cm · ${customization?.page_count} páginas · ${customization?.filled_pages} fotos · ${customization?.hardcover ? "Pasta dura" : "Pasta blanda"}`
+                      : (variant?.name ?? null)
+                  }
                   quantity={Number(i.quantity)}
                   unitPrice={Number(i.unit_price)}
-                  imageUrl={imgs[0] ?? null}
+                  imageUrl={isPhotobook ? (i.preview_url ?? null) : (imgs[0] ?? null)}
                   uploadedFileUrl={i.uploaded_file_url ?? null}
-                  customization={customization}
+                  customization={isPhotobook ? null : customization}
                 />
               );
             })}

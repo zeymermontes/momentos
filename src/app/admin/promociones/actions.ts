@@ -11,14 +11,19 @@ const PromotionSchema = z
     name: z.string().min(2),
     label: z.string().min(2),
     description: z.string().optional().nullable(),
-    type: z.enum(["free_shipping", "percent_off", "amount_off"]),
+    type: z.enum(["free_shipping", "percent_off", "amount_off", "buy_x_get_y"]),
     discount_value: z.coerce.number().min(0),
+    buy_x: z
+      .union([z.literal(""), z.coerce.number().int().min(0)])
+      .transform((v) => (v === "" || v === 0 ? null : v))
+      .nullable()
+      .optional(),
     min_subtotal: z
       .union([z.literal(""), z.coerce.number().nonnegative()])
       .transform((v) => (v === "" ? null : v))
       .nullable()
       .optional(),
-    scope: z.enum(["all", "products", "categories"]),
+    scope: z.enum(["all", "products", "categories", "fotolibros"]),
     starts_at: z.string().optional().nullable(),
     ends_at: z.string().optional().nullable(),
     sort_order: z.coerce.number().int().optional(),
@@ -39,6 +44,13 @@ const PromotionSchema = z
       message: "Ingresa un monto mayor a 0",
       path: ["discount_value"],
     },
+  )
+  .refine(
+    (v) => v.type !== "buy_x_get_y" || (v.discount_value >= 1 && v.buy_x && v.buy_x >= 2),
+    {
+      message: "Configura compra mínima (X ≥ 2) y unidades gratis (Y ≥ 1)",
+      path: ["discount_value"],
+    },
   );
 
 export type PromotionActionState = {
@@ -53,6 +65,7 @@ function parseForm(formData: FormData) {
     description: formData.get("description") || null,
     type: formData.get("type"),
     discount_value: formData.get("discount_value") || 0,
+    buy_x: formData.get("buy_x") || "",
     min_subtotal:
       formData.get("min_subtotal") === null ||
       formData.get("min_subtotal") === ""
@@ -81,7 +94,7 @@ function readScopeIds(formData: FormData) {
 async function syncScope(
   supabase: Awaited<ReturnType<typeof requireAdmin>>["supabase"],
   ruleId: string,
-  scope: "all" | "products" | "categories",
+  scope: "all" | "products" | "categories" | "fotolibros",
   productIds: string[],
   categoryIds: string[],
 ) {
@@ -135,6 +148,7 @@ export async function createPromotionAction(
         description: parsed.data.description ?? null,
         type: parsed.data.type,
         discount_value: parsed.data.discount_value,
+        buy_x: parsed.data.buy_x ?? null,
         min_subtotal: parsed.data.min_subtotal ?? null,
         scope: parsed.data.scope,
         starts_at: parsed.data.starts_at || null,
@@ -174,6 +188,7 @@ export async function updatePromotionAction(
         description: parsed.data.description ?? null,
         type: parsed.data.type,
         discount_value: parsed.data.discount_value,
+        buy_x: parsed.data.buy_x ?? null,
         min_subtotal: parsed.data.min_subtotal ?? null,
         scope: parsed.data.scope,
         starts_at: parsed.data.starts_at || null,

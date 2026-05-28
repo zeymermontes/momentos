@@ -11,6 +11,8 @@ import {
   Users,
   Settings,
   Sparkles,
+  Book,
+  Ticket,
   LogOut,
 } from "lucide-react";
 import { MomentosLogo } from "@/components/momentos-logo";
@@ -20,10 +22,12 @@ import { signOutAction } from "@/app/(auth)/actions";
 const navItems = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/pedidos", label: "Pedidos", icon: ShoppingBag },
+  { href: "/admin/fotolibros", label: "Fotolibros", icon: Book },
   { href: "/admin/productos", label: "Productos", icon: Package },
   { href: "/admin/categorias", label: "Categorías", icon: Tag },
   { href: "/admin/banners", label: "Banners", icon: ImageIcon },
   { href: "/admin/promociones", label: "Promociones", icon: Sparkles },
+  { href: "/admin/codigos", label: "Códigos", icon: Ticket },
   { href: "/admin/secciones", label: "Landing", icon: LayoutPanelLeft },
   { href: "/admin/sucursales", label: "Sucursales", icon: Building2 },
   { href: "/admin/usuarios", label: "Usuarios", icon: Users },

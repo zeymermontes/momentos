@@ -1,23 +1,26 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { SIZES, PAGE_COUNTS } from "@/lib/photobook";
+import { formatMXN } from "@/lib/utils";
+import type { PhotobookSettings } from "@/lib/photobook-config";
+import { getPhotobookPrice } from "@/lib/photobook-config";
 import {
   createProjectAction,
   type ActionState,
 } from "@/app/(storefront)/fotolibro/actions";
-import { useState } from "react";
 
-export function ConfigForm() {
-  const [sizeCm, setSizeCm] = useState(20);
-  const [pageCount, setPageCount] = useState(20);
+export function ConfigForm({ settings }: { settings: PhotobookSettings }) {
+  const [sizeCm, setSizeCm] = useState(settings.sizes[0]?.cm ?? 20);
+  const [pageCount, setPageCount] = useState(settings.page_counts[0] ?? 20);
   const [state, formAction, pending] = useActionState<
     ActionState | undefined,
     FormData
   >(createProjectAction, undefined);
+
+  const price = getPhotobookPrice(settings, sizeCm, pageCount);
 
   return (
     <form action={formAction} className="space-y-8">
@@ -28,7 +31,7 @@ export function ConfigForm() {
       <fieldset className="space-y-3">
         <legend className="text-lg font-semibold">Tamaño</legend>
         <div className="grid grid-cols-3 gap-3">
-          {SIZES.map((s) => (
+          {settings.sizes.map((s) => (
             <button
               key={s.cm}
               type="button"
@@ -41,15 +44,14 @@ export function ConfigForm() {
               )}
             >
               <div
-                className={cn(
-                  "rounded-lg bg-muted",
-                  s.cm === 15 && "h-12 w-12",
-                  s.cm === 20 && "h-16 w-16",
-                  s.cm === 30 && "h-20 w-20",
-                )}
+                className="rounded-lg bg-muted"
+                style={{ width: 16 + s.cm * 1.5, height: 16 + s.cm * 1.5 }}
               />
               <span className="font-semibold">{s.label}</span>
               <span className="text-xs text-muted-foreground">{s.sublabel}</span>
+              <span className="text-xs text-primary font-medium">
+                {formatMXN(s.price_per_page)}/pág
+              </span>
             </button>
           ))}
         </div>
@@ -59,7 +61,7 @@ export function ConfigForm() {
       <fieldset className="space-y-3">
         <legend className="text-lg font-semibold">Número de páginas</legend>
         <div className="grid grid-cols-3 gap-3">
-          {PAGE_COUNTS.map((count) => (
+          {settings.page_counts.map((count) => (
             <button
               key={count}
               type="button"
@@ -77,6 +79,13 @@ export function ConfigForm() {
           ))}
         </div>
       </fieldset>
+
+      {/* Price preview */}
+      <div className="rounded-xl bg-muted/40 p-4 text-center">
+        <span className="text-sm text-muted-foreground">Desde </span>
+        <span className="text-2xl font-bold">{formatMXN(price)}</span>
+        <span className="text-sm text-muted-foreground"> pasta blanda</span>
+      </div>
 
       {state?.message && (
         <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">

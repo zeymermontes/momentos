@@ -34,12 +34,13 @@ export type HomeSectionType =
   | "banner_strip"
   | "custom_html";
 export type ProductStatus = "draft" | "active" | "archived";
-export type DiscountType = "percent" | "amount";
+export type DiscountType = "percent" | "amount" | "free_shipping";
 export type PromotionRuleType =
   | "free_shipping"
   | "percent_off"
-  | "amount_off";
-export type PromotionRuleScope = "all" | "products" | "categories";
+  | "amount_off"
+  | "buy_x_get_y";
+export type PromotionRuleScope = "all" | "products" | "categories" | "fotolibros";
 
 type Table<R, I = R, U = Partial<I>> = {
   Row: R;
@@ -299,7 +300,7 @@ export interface Database {
         {
           id: string;
           cart_id: string;
-          product_id: string;
+          product_id: string | null;
           variant_id: string | null;
           quantity: number;
           unit_price: number;
@@ -311,7 +312,7 @@ export interface Database {
         {
           id?: string;
           cart_id: string;
-          product_id: string;
+          product_id?: string | null;
           variant_id?: string | null;
           quantity?: number;
           unit_price: number;
@@ -395,28 +396,34 @@ export interface Database {
         {
           id: string;
           code: string;
+          label: string;
           description: string | null;
           discount_type: DiscountType;
           value: number;
+          min_subtotal: number | null;
           conditions: Json | null;
           starts_at: string | null;
           ends_at: string | null;
           usage_limit: number | null;
           times_used: number;
           active: boolean;
+          updated_at: string;
         },
         {
           id?: string;
           code: string;
+          label: string;
           description?: string | null;
           discount_type: DiscountType;
           value: number;
+          min_subtotal?: number | null;
           conditions?: Json | null;
           starts_at?: string | null;
           ends_at?: string | null;
           usage_limit?: number | null;
           times_used?: number;
           active?: boolean;
+          updated_at?: string;
         }
       >;
       site_settings: Table<
@@ -439,6 +446,7 @@ export interface Database {
           description: string | null;
           type: PromotionRuleType;
           discount_value: number;
+          buy_x: number | null;
           min_subtotal: number | null;
           scope: PromotionRuleScope;
           starts_at: string | null;
@@ -455,6 +463,7 @@ export interface Database {
           description?: string | null;
           type: PromotionRuleType;
           discount_value?: number;
+          buy_x?: number | null;
           min_subtotal?: number | null;
           scope?: PromotionRuleScope;
           starts_at?: string | null;
@@ -493,6 +502,7 @@ export interface Database {
           page_count: number;
           title: string;
           cover_image_path: string | null;
+          cover_thumb_path: string | null;
           cover_crop: Json;
           status: string;
           created_at: string;
@@ -505,6 +515,7 @@ export interface Database {
           page_count: number;
           title?: string;
           cover_image_path?: string | null;
+          cover_thumb_path?: string | null;
           cover_crop?: Json;
           status?: string;
           created_at?: string;
@@ -517,6 +528,7 @@ export interface Database {
           project_id: string;
           sort_order: number;
           image_path: string | null;
+          thumb_path: string | null;
           crop: Json;
           created_at: string;
         },
@@ -525,6 +537,7 @@ export interface Database {
           project_id: string;
           sort_order: number;
           image_path?: string | null;
+          thumb_path?: string | null;
           crop?: Json;
           created_at?: string;
         }

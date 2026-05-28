@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus, Package } from "lucide-react";
+import { Plus, Package, Book, Settings } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { EmptyState } from "@/components/admin/empty-state";
 import { DeleteButton } from "@/components/admin/delete-button";
@@ -16,6 +16,7 @@ import {
 import { requireAdmin } from "@/lib/auth";
 import { cn, formatMXN } from "@/lib/utils";
 import { deleteProductAction } from "@/app/admin/productos/actions";
+import { getPhotobookSettings, getPhotobookPrice } from "@/lib/photobook";
 
 export const metadata = { title: "Productos" };
 
@@ -44,6 +45,7 @@ type ProductListRow = {
 
 export default async function ProductsAdminPage() {
   const { supabase } = await requireAdmin();
+  const pbSettings = await getPhotobookSettings();
   const { data } = await supabase
     .from("products")
     .select(
@@ -95,6 +97,40 @@ export default async function ProductsAdminPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
+              {/* Pinned fotolibro row */}
+              <TableRow className="bg-primary/5">
+                <TableCell>
+                  <div className="grid h-12 w-12 place-items-center rounded bg-primary/10">
+                    <Book className="h-6 w-6 text-primary" />
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <p className="font-medium">Fotolibro personalizado</p>
+                  <p className="text-xs text-muted-foreground">
+                    {pbSettings.sizes.length} tamaño{pbSettings.sizes.length !== 1 ? "s" : ""} · {pbSettings.page_counts.length} opciones de páginas
+                  </p>
+                </TableCell>
+                <TableCell className="text-sm text-muted-foreground">
+                  Fotolibros
+                </TableCell>
+                <TableCell className="text-sm font-medium">
+                  Desde {formatMXN(getPhotobookPrice(pbSettings, pbSettings.sizes[0]?.cm ?? 15, pbSettings.page_counts[0] ?? 20))}
+                </TableCell>
+                <TableCell>
+                  <Badge variant={pbSettings.enabled ? "success" : "muted"}>
+                    {pbSettings.enabled ? "Activo" : "Desactivado"}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-right">
+                  <Link
+                    href="/admin/configuracion"
+                    className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-xs font-medium hover:bg-muted"
+                  >
+                    <Settings className="h-3.5 w-3.5" />
+                    Configurar
+                  </Link>
+                </TableCell>
+              </TableRow>
               {products.map((p) => {
                 const imgs = Array.isArray(p.images) ? (p.images as string[]) : [];
                 const status = p.status;

@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { PhotobookProject, PhotobookPage } from "@/lib/photobook";
+import { PageThumb } from "@/components/photobook/page-preview";
+import type { PhotobookProject, PhotobookPage } from "@/lib/photobook-config";
+import type { CropState } from "@/lib/photobook-config";
 
 type Props = {
   project: PhotobookProject;
@@ -13,7 +15,36 @@ type Props = {
 
 export function BookPreview3D({ project, coverUrl, pages }: Props) {
   const filledPages = pages.filter((p) => p.image_url);
-  const totalLeaves = Math.ceil((filledPages.length + 1) / 2);
+  const leaves: { front: React.ReactNode; back: React.ReactNode }[] = [];
+
+  // Leaf 0: cover front + blank inside cover
+  leaves.push({
+    front: <CoverFace coverUrl={coverUrl} coverCrop={project.cover_crop} title={project.title} />,
+    back: <BlankFace />,
+  });
+
+  // Content leaves: 2 pages per leaf
+  for (let i = 0; i < filledPages.length; i += 2) {
+    leaves.push({
+      front: (
+        <PageFace page={filledPages[i]} pageNum={i + 1} />
+      ),
+      back:
+        i + 1 < filledPages.length ? (
+          <PageFace page={filledPages[i + 1]} pageNum={i + 2} />
+        ) : (
+          <BlankFace />
+        ),
+    });
+  }
+
+  // Back cover leaf
+  leaves.push({
+    front: <BlankFace />,
+    back: <BackCoverFace />,
+  });
+
+  const totalLeaves = leaves.length;
   const [flippedCount, setFlippedCount] = useState(0);
 
   const canNext = flippedCount < totalLeaves;
@@ -26,46 +57,6 @@ export function BookPreview3D({ project, coverUrl, pages }: Props) {
     if (canPrev) setFlippedCount((c) => c - 1);
   }
 
-  const leaves: { front: React.ReactNode; back: React.ReactNode }[] = [];
-
-  // Leaf 0: cover (front) + page 1 (back)
-  leaves.push({
-    front: (
-      <CoverFace
-        coverUrl={coverUrl}
-        title={project.title}
-      />
-    ),
-    back: filledPages[0] ? (
-      <PageFace src={filledPages[0].image_url!} pageNum={1} />
-    ) : (
-      <BlankFace />
-    ),
-  });
-
-  // Remaining leaves: 2 pages per leaf
-  for (let i = 1; i < filledPages.length; i += 2) {
-    leaves.push({
-      front: (
-        <PageFace src={filledPages[i].image_url!} pageNum={i + 1} />
-      ),
-      back:
-        i + 1 < filledPages.length ? (
-          <PageFace src={filledPages[i + 1].image_url!} pageNum={i + 2} />
-        ) : (
-          <BackCoverFace />
-        ),
-    });
-  }
-
-  // Ensure last leaf has back cover
-  if (filledPages.length % 2 === 0) {
-    leaves.push({
-      front: <BlankFace />,
-      back: <BackCoverFace />,
-    });
-  }
-
   return (
     <div className="flex flex-col items-center gap-6">
       {/* Book */}
@@ -75,15 +66,18 @@ export function BookPreview3D({ project, coverUrl, pages }: Props) {
           width: 320,
           height: 320,
           perspective: 1800,
+          filter: "drop-shadow(0 8px 24px rgba(0,0,0,0.18)) drop-shadow(0 2px 6px rgba(0,0,0,0.1))",
         }}
       >
         {/* Book base (back cover always visible) */}
-        <div className="absolute inset-0 rounded-r-lg bg-gray-200 shadow-inner" />
+        <div className="absolute inset-0 bg-gray-200" />
 
-        {/* Leaves — render in reverse so the first leaf is on top */}
+        {/* Leaves */}
         {leaves.map((leaf, i) => {
           const isFlipped = i < flippedCount;
-          const zIndex = isFlipped ? i : leaves.length - i;
+          const zIndex = isFlipped
+            ? leaves.length + i
+            : leaves.length - i;
 
           return (
             <div
@@ -99,18 +93,22 @@ export function BookPreview3D({ project, coverUrl, pages }: Props) {
             >
               {/* Front face */}
               <div
-                className="absolute inset-0 overflow-hidden rounded-r-lg"
-                style={{ backfaceVisibility: "hidden" }}
+                className="absolute inset-0 overflow-hidden"
+                style={{
+                  backfaceVisibility: "hidden",
+                  boxShadow: "4px 2px 12px rgba(0,0,0,0.15), 1px 0 3px rgba(0,0,0,0.08)",
+                }}
               >
                 {leaf.front}
               </div>
 
               {/* Back face */}
               <div
-                className="absolute inset-0 overflow-hidden rounded-l-lg"
+                className="absolute inset-0 overflow-hidden"
                 style={{
                   backfaceVisibility: "hidden",
                   transform: "rotateY(180deg)",
+                  boxShadow: "-4px 2px 12px rgba(0,0,0,0.15), -1px 0 3px rgba(0,0,0,0.08)",
                 }}
               >
                 {leaf.back}
@@ -120,7 +118,7 @@ export function BookPreview3D({ project, coverUrl, pages }: Props) {
         })}
 
         {/* Spine shadow */}
-        <div className="absolute left-0 top-0 bottom-0 w-2 bg-gradient-to-r from-black/20 to-transparent z-50 pointer-events-none rounded-l" />
+        <div className="absolute left-0 top-0 bottom-0 w-2 bg-gradient-to-r from-black/20 to-transparent z-50 pointer-events-none" />
       </div>
 
       {/* Controls */}
@@ -138,12 +136,14 @@ export function BookPreview3D({ project, coverUrl, pages }: Props) {
           <ChevronLeft className="h-5 w-5" />
         </button>
 
-        <span className="text-sm text-muted-foreground min-w-[100px] text-center">
+        <span className="text-sm text-muted-foreground min-w-[120px] text-center">
           {flippedCount === 0
             ? "Portada"
             : flippedCount >= totalLeaves
               ? "Contraportada"
-              : `Página ${Math.min(flippedCount * 2, filledPages.length)} de ${filledPages.length}`}
+              : flippedCount === 1
+                ? `Página 1 de ${filledPages.length}`
+                : `Páginas ${(flippedCount - 1) * 2}–${Math.min((flippedCount - 1) * 2 + 1, filledPages.length)} de ${filledPages.length}`}
         </span>
 
         <button
@@ -167,19 +167,24 @@ export function BookPreview3D({ project, coverUrl, pages }: Props) {
   );
 }
 
-function CoverFace({ coverUrl, title }: { coverUrl: string | null; title: string }) {
+function CoverFace({
+  coverUrl,
+  coverCrop,
+  title,
+}: {
+  coverUrl: string | null;
+  coverCrop: CropState;
+  title: string;
+}) {
   return (
-    <div className="relative h-full w-full bg-white shadow-md">
-      <div className="absolute inset-[10%] overflow-hidden">
-        {coverUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={coverUrl} alt="Portada" className="h-full w-full object-contain" />
-        ) : (
-          <div className="grid h-full w-full place-items-center bg-primary/10 text-primary">
-            <span className="text-lg font-bold">Momentos</span>
-          </div>
-        )}
-      </div>
+    <div className="relative h-full w-full bg-white">
+      {coverUrl ? (
+        <PageThumb src={coverUrl} crop={coverCrop} />
+      ) : (
+        <div className="absolute inset-[10%] grid place-items-center bg-primary/10 text-primary">
+          <span className="text-lg font-bold">Momentos</span>
+        </div>
+      )}
       {title && (
         <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center" style={{ height: "10%" }}>
           <span className="text-xs font-semibold text-gray-700 truncate px-3">
@@ -191,13 +196,11 @@ function CoverFace({ coverUrl, title }: { coverUrl: string | null; title: string
   );
 }
 
-function PageFace({ src, pageNum }: { src: string; pageNum: number }) {
+function PageFace({ page, pageNum }: { page: PhotobookPage; pageNum: number }) {
+  const src = page.image_url ?? page.thumb_url!;
   return (
-    <div className="relative h-full w-full bg-white shadow-sm">
-      <div className="absolute inset-[10%] overflow-hidden">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src} alt={`Página ${pageNum}`} className="h-full w-full object-contain" />
-      </div>
+    <div className="relative h-full w-full bg-white">
+      <PageThumb src={src} crop={page.crop} />
       <span className="absolute bottom-2 right-3 text-[9px] text-gray-400">
         {pageNum}
       </span>
@@ -206,12 +209,12 @@ function PageFace({ src, pageNum }: { src: string; pageNum: number }) {
 }
 
 function BlankFace() {
-  return <div className="h-full w-full bg-white shadow-sm" />;
+  return <div className="h-full w-full bg-white" />;
 }
 
 function BackCoverFace() {
   return (
-    <div className="h-full w-full bg-gray-100 shadow-sm grid place-items-center">
+    <div className="h-full w-full bg-gray-100 grid place-items-center">
       <span className="text-xs text-gray-400">Momentos</span>
     </div>
   );

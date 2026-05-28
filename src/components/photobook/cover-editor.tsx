@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useActionState } from "react";
+import { useState, useRef, useEffect, useActionState } from "react";
 import { Loader2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { ImageCropper } from "@/components/photobook/image-cropper";
 import { optimizeImage, getImageDimensions } from "@/lib/image-optimize";
 import { createClient } from "@/lib/supabase/client";
 import { updateCoverAction, type ActionState } from "@/app/(storefront)/fotolibro/actions";
-import type { CropState, PhotobookProject } from "@/lib/photobook";
+import type { CropState, PhotobookProject } from "@/lib/photobook-config";
 
 type Props = {
   project: PhotobookProject;
@@ -19,6 +19,7 @@ type Props = {
 
 export function CoverEditor({ project, coverUrl, userId }: Props) {
   const [imagePath, setImagePath] = useState(project.cover_image_path ?? "");
+  const [thumbPath, setThumbPath] = useState(project.cover_thumb_path ?? "");
   const [imageUrl, setImageUrl] = useState(coverUrl ?? "");
   const [imgDims, setImgDims] = useState<{ width: number; height: number } | null>(null);
   const [crop, setCrop] = useState<CropState>(project.cover_crop);
@@ -30,34 +31,38 @@ export function CoverEditor({ project, coverUrl, userId }: Props) {
     undefined,
   );
 
-  async function loadDimensions(url: string) {
-    try {
-      const dims = await getImageDimensions(url);
-      setImgDims(dims);
-    } catch { /* ignore */ }
-  }
-
-  if (imageUrl && !imgDims) {
-    loadDimensions(imageUrl);
-  }
+  useEffect(() => {
+    if (!imageUrl) return;
+    let cancelled = false;
+    getImageDimensions(imageUrl).then((dims) => {
+      if (!cancelled) setImgDims(dims);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [imageUrl]);
 
   async function handleUpload(file: File) {
     setUploading(true);
     try {
-      const optimized = await optimizeImage(file);
+      const { full, thumb } = await optimizeImage(file);
       const supabase = createClient();
-      const path = `${userId}/photobooks/${project.id}/cover.jpg`;
-      await supabase.storage.from("customer-uploads").upload(path, optimized, {
-        upsert: true,
-        contentType: "image/jpeg",
-      });
+      const ts = Date.now();
+      const fullPath = `${userId}/photobooks/${project.id}/cover_${ts}.jpg`;
+      const tPath = `${userId}/photobooks/${project.id}/cover_${ts}_thumb.webp`;
+      const [{ error: e1 }, { error: e2 }] = await Promise.all([
+        supabase.storage.from("customer-uploads").upload(fullPath, full, { contentType: "image/jpeg" }),
+        supabase.storage.from("customer-uploads").upload(tPath, thumb, { contentType: "image/webp" }),
+      ]);
+      if (e1) throw e1;
+      if (e2) throw e2;
       const { data } = await supabase.storage
         .from("customer-uploads")
-        .createSignedUrl(path, 3600);
-      setImagePath(path);
-      setImageUrl(data?.signedUrl ?? "");
+        .createSignedUrl(fullPath, 3600);
+      const freshUrl = data?.signedUrl ?? "";
+      setImagePath(fullPath);
+      setThumbPath(tPath);
       setCrop({ x: 0, y: 0, scale: 1 });
       setImgDims(null);
+      setImageUrl(freshUrl);
     } catch (e) {
       console.error("Upload failed:", e);
     } finally {
@@ -79,16 +84,16 @@ export function CoverEditor({ project, coverUrl, userId }: Props) {
               imgHeight={imgDims.height}
               crop={crop}
               onChange={setCrop}
+              titleOverlay={title || "Tu título aquí"}
             />
-            {/* Title overlay in bottom margin */}
-            <div
-              className="pointer-events-none absolute bottom-0 left-0 right-0 flex items-center justify-center"
-              style={{ height: "10%" }}
-            >
-              <span className="text-sm font-semibold text-gray-700 truncate px-4">
-                {title || "Tu título aquí"}
-              </span>
-            </div>
+            {uploading && (
+              <div className="absolute inset-0 z-40 grid place-items-center bg-white/70">
+                <div className="flex flex-col items-center gap-2">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <span className="text-sm font-medium text-muted-foreground">Subiendo nueva foto...</span>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <button
@@ -132,7 +137,14 @@ export function CoverEditor({ project, coverUrl, userId }: Props) {
             onClick={() => inputRef.current?.click()}
             disabled={uploading}
           >
-            Cambiar foto
+            {uploading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Subiendo...
+              </>
+            ) : (
+              "Cambiar foto"
+            )}
           </Button>
         )}
 
@@ -158,32 +170,18 @@ export function CoverEditor({ project, coverUrl, userId }: Props) {
       <div className="space-y-4">
         <h2 className="text-xl font-bold">Vista previa</h2>
 
-        <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-white shadow-lg">
-          {/* Margin area */}
-          <div className="absolute inset-[10%] overflow-hidden">
-            {imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={imageUrl} alt="" className="h-full w-full object-contain" />
-            ) : (
-              <div className="grid h-full w-full place-items-center bg-muted/20 text-muted-foreground text-sm">
-                Tu foto aquí
-              </div>
-            )}
-          </div>
-          {/* Title in bottom margin */}
-          <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center" style={{ height: "10%" }}>
-            <span className="text-sm font-semibold text-gray-700 truncate px-4">
-              {title}
-            </span>
-          </div>
-          {/* Subtle border */}
-          <div className="absolute inset-0 rounded-xl ring-1 ring-border" />
-        </div>
+        <CoverPreview
+          imageUrl={imageUrl}
+          imgDims={imgDims}
+          crop={crop}
+          title={title}
+        />
 
         <form action={formAction}>
           <input type="hidden" name="project_id" value={project.id} />
           <input type="hidden" name="title" value={title} />
           <input type="hidden" name="cover_image_path" value={imagePath} />
+          <input type="hidden" name="cover_thumb_path" value={thumbPath} />
           <input type="hidden" name="cover_crop" value={JSON.stringify(crop)} />
 
           {state?.message && (
@@ -197,6 +195,103 @@ export function CoverEditor({ project, coverUrl, userId }: Props) {
           </Button>
         </form>
       </div>
+    </div>
+  );
+}
+
+const CREF = 400;
+const CREF_CONTENT = CREF * 0.8;
+const CREF_MARGIN = CREF * 0.1;
+
+function CoverPreview({
+  imageUrl,
+  imgDims,
+  crop,
+  title,
+}: {
+  imageUrl: string;
+  imgDims: { width: number; height: number } | null;
+  crop: CropState;
+  title: string;
+}) {
+  const previewRef = useRef<HTMLDivElement>(null);
+  const [previewSize, setPreviewSize] = useState(0);
+
+  useEffect(() => {
+    const el = previewRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) =>
+      setPreviewSize(Math.round(entry.contentRect.width)),
+    );
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const scaleDown = previewSize > 0 ? previewSize / CREF : 0;
+
+  let containW = CREF_CONTENT;
+  let containH = CREF_CONTENT;
+  if (imgDims) {
+    const aspect = imgDims.width / imgDims.height;
+    containW = aspect >= 1 ? CREF_CONTENT : CREF_CONTENT * aspect;
+    containH = aspect >= 1 ? CREF_CONTENT / aspect : CREF_CONTENT;
+  }
+
+  return (
+    <div
+      ref={previewRef}
+      className="relative aspect-square w-full overflow-hidden bg-white shadow-lg"
+    >
+      {scaleDown > 0 && (
+        <div
+          style={{
+            width: CREF,
+            height: CREF,
+            transform: `scale(${scaleDown})`,
+            transformOrigin: "top left",
+            position: "relative",
+          }}
+        >
+          {imageUrl && imgDims ? (
+            <div
+              className="absolute overflow-hidden"
+              style={{ top: CREF_MARGIN, left: CREF_MARGIN, width: CREF_CONTENT, height: CREF_CONTENT }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={imageUrl}
+                alt=""
+                className="absolute select-none"
+                style={{
+                  width: containW,
+                  height: "auto",
+                  aspectRatio: `${imgDims.width} / ${imgDims.height}`,
+                  left: (CREF_CONTENT - containW) / 2,
+                  top: (CREF_CONTENT - containH) / 2,
+                  transformOrigin: "center center",
+                  transform: `translate(${crop.x}px, ${crop.y}px) scale(${crop.scale}) rotate(${crop.rotation ?? 0}deg)`,
+                }}
+              />
+            </div>
+          ) : (
+            <div
+              className="absolute grid place-items-center bg-muted/20 text-muted-foreground text-sm"
+              style={{ top: CREF_MARGIN, left: CREF_MARGIN, width: CREF_CONTENT, height: CREF_CONTENT }}
+            >
+              Tu foto aquí
+            </div>
+          )}
+          <div
+            className="absolute left-0 right-0 flex items-center justify-center"
+            style={{ bottom: 0, height: CREF_MARGIN }}
+          >
+            <span className="text-sm font-semibold text-gray-700 truncate px-4">
+              {title || "Tu título aquí"}
+            </span>
+          </div>
+        </div>
+      )}
+      <div className="absolute inset-0 ring-1 ring-border" />
     </div>
   );
 }

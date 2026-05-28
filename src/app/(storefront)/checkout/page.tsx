@@ -21,7 +21,9 @@ export default async function CheckoutPage() {
     id: string;
     quantity: number;
     unit_price: number;
-    product_id: string;
+    product_id: string | null;
+    customization: unknown;
+    preview_url: string | null;
     products: {
       name: string;
       images: unknown;
@@ -32,7 +34,7 @@ export default async function CheckoutPage() {
   const { data: itemsRaw } = await cart.supabase
     .from("cart_items")
     .select(
-      "id, quantity, unit_price, product_id, products!product_id(name, images, category_id), product_variants(name)",
+      "id, quantity, unit_price, product_id, customization, preview_url, products!product_id(name, images, category_id), product_variants(name)",
     )
     .eq("cart_id", cart.cartId)
     .order("created_at", { ascending: false });
@@ -61,14 +63,11 @@ export default async function CheckoutPage() {
       .select("product_id, category_id")
       .in(
         "product_id",
-        items.map((i) => i.product_id),
+        items.map((i) => i.product_id).filter(Boolean) as string[],
       ),
     getActivePromotionRules(),
   ]);
 
-  if ((addresses?.length ?? 0) === 0 && (branches?.length ?? 0) === 0) {
-    redirect("/mi-cuenta/direcciones");
-  }
 
   const extraCatsByProduct = new Map<string, string[]>();
   for (const link of extraCategoryLinks ?? []) {
@@ -78,19 +77,26 @@ export default async function CheckoutPage() {
   }
 
   const clientItems = items.map((i) => {
+    const cust = i.customization as Record<string, unknown> | null;
+    const isPhotobook = cust?.type === "photobook";
     const imgs = Array.isArray(i.products?.images)
       ? (i.products?.images as string[])
       : [];
     return {
       id: i.id,
-      product_id: i.product_id,
+      product_id: i.product_id ?? "",
       quantity: Number(i.quantity),
       unit_price: Number(i.unit_price),
-      product_name: i.products?.name ?? "Producto",
-      variant_name: i.product_variants?.name ?? null,
-      image_url: imgs[0] ?? null,
+      product_name: isPhotobook
+        ? `Fotolibro — ${cust?.title ?? "Sin título"}`
+        : (i.products?.name ?? "Producto"),
+      variant_name: isPhotobook
+        ? `${cust?.size_cm}×${cust?.size_cm} cm · ${cust?.page_count} pág. · ${cust?.hardcover ? "Pasta dura" : "Pasta blanda"}`
+        : (i.product_variants?.name ?? null),
+      image_url: isPhotobook ? (i.preview_url ?? null) : (imgs[0] ?? null),
       category_id: i.products?.category_id ?? null,
-      additional_category_ids: extraCatsByProduct.get(i.product_id) ?? [],
+      additional_category_ids: i.product_id ? (extraCatsByProduct.get(i.product_id) ?? []) : [],
+      is_photobook: isPhotobook,
     };
   });
 

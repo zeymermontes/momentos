@@ -11,15 +11,16 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { PromotionsSummary } from "@/app/(storefront)/_components/promotions-summary";
 import {
+  PromoCodeInput,
+  type AppliedCode,
+} from "@/app/(storefront)/checkout/_components/promo-code-input";
+import {
   createOrderAction,
   type CreateOrderState,
 } from "@/app/(storefront)/checkout/actions";
-import { evaluatePromotions, type PromotionRule } from "@/lib/promotions";
+import { evaluatePromotions, type PromotionRule } from "@/lib/promotions-engine";
 import { cn, formatMXN } from "@/lib/utils";
 
-// Keep in sync with SHIPPING_FLAT_MXN in actions.ts — duplicated here so the
-// client can show the breakdown in the live summary before the order is
-// created server-side.
 const SHIPPING_FLAT_MXN = 100;
 
 type Address = {
@@ -52,6 +53,7 @@ type CartItem = {
   image_url: string | null;
   category_id: string | null;
   additional_category_ids: string[];
+  is_photobook?: boolean;
 };
 
 type Props = {
@@ -78,6 +80,7 @@ export function CheckoutClient({
   );
   const [addressId, setAddressId] = useState<string>(defaultAddress?.id ?? "");
   const [branchId, setBranchId] = useState<string>(branches[0]?.id ?? "");
+  const [appliedCode, setAppliedCode] = useState<AppliedCode | null>(null);
 
   const subtotal = items.reduce(
     (acc, i) => acc + Number(i.unit_price) * Number(i.quantity),
@@ -85,9 +88,6 @@ export function CheckoutClient({
   );
   const rawShipping = fulfillment === "ship" ? SHIPPING_FLAT_MXN : 0;
 
-  // Evaluate promotions against the current cart + fulfillment-selected
-  // shipping cost. The same engine runs again on the server when the order is
-  // created — we just preview here.
   const promos = evaluatePromotions(
     promotionRules,
     items.map((i) => ({
@@ -96,11 +96,20 @@ export function CheckoutClient({
       additional_category_ids: i.additional_category_ids,
       quantity: i.quantity,
       unit_price: i.unit_price,
+      is_photobook: i.is_photobook,
     })),
     rawShipping,
   );
-  const shipping = promos.free_shipping ? 0 : rawShipping;
-  const subtotalDiscount = promos.total_discount - (promos.free_shipping ? rawShipping : 0);
+
+  const freeShipping = promos.free_shipping || (appliedCode?.free_shipping ?? false);
+  const shipping = freeShipping ? 0 : rawShipping;
+  const ruleSubtotalDiscount =
+    promos.total_discount - (promos.free_shipping ? rawShipping : 0);
+  const codeSubtotalDiscount = appliedCode
+    ? appliedCode.discount_amount -
+      (appliedCode.free_shipping ? rawShipping : 0)
+    : 0;
+  const subtotalDiscount = ruleSubtotalDiscount + codeSubtotalDiscount;
   const total = subtotal + shipping - subtotalDiscount;
 
   return (
@@ -116,6 +125,7 @@ export function CheckoutClient({
         setBranchId={setBranchId}
         addresses={addresses}
         branches={branches}
+        appliedCode={appliedCode}
       />
 
       <Summary
@@ -127,6 +137,9 @@ export function CheckoutClient({
         total={total}
         fulfillment={fulfillment}
         promos={promos}
+        appliedCode={appliedCode}
+        onApplyCode={setAppliedCode}
+        onRemoveCode={() => setAppliedCode(null)}
       />
     </div>
   );
@@ -143,6 +156,7 @@ function ShippingForm({
   setBranchId,
   addresses,
   branches,
+  appliedCode,
 }: {
   formAction: (payload: FormData) => void;
   state: CreateOrderState | undefined;
@@ -154,6 +168,7 @@ function ShippingForm({
   setBranchId: (v: string) => void;
   addresses: Address[];
   branches: Branch[];
+  appliedCode: AppliedCode | null;
 }) {
   return (
     <form action={formAction} className="space-y-6">
@@ -163,6 +178,13 @@ function ShippingForm({
       ) : (
         <input type="hidden" name="branch_id" value={branchId} />
       )}
+      {appliedCode ? (
+        <input
+          type="hidden"
+          name="promo_code"
+          value={appliedCode.promo.code}
+        />
+      ) : null}
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">¿Cómo quieres recibirlo?</h2>
@@ -309,6 +331,9 @@ function Summary({
   total,
   fulfillment,
   promos,
+  appliedCode,
+  onApplyCode,
+  onRemoveCode,
 }: {
   items: CartItem[];
   subtotal: number;
@@ -318,6 +343,9 @@ function Summary({
   total: number;
   fulfillment: "ship" | "pickup";
   promos: ReturnType<typeof evaluatePromotions>;
+  appliedCode: AppliedCode | null;
+  onApplyCode: (a: AppliedCode) => void;
+  onRemoveCode: () => void;
 }) {
   void rawShipping;
   return (
@@ -355,6 +383,15 @@ function Summary({
           ))}
         </ul>
         <PromotionsSummary result={promos} />
+        <div className="border-t border-border pt-3">
+          <PromoCodeInput
+            cartSubtotal={subtotal}
+            shippingCost={rawShipping}
+            applied={appliedCode}
+            onApply={onApplyCode}
+            onRemove={onRemoveCode}
+          />
+        </div>
         <div className="space-y-2 border-t border-border pt-3 text-sm">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Subtotal</span>

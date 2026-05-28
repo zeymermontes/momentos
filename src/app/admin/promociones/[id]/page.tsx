@@ -49,6 +49,7 @@ export default async function EditPromotionPage({
             rule={{
               ...rule,
               discount_value: Number(rule.discount_value),
+              buy_x: rule.buy_x === null || rule.buy_x === undefined ? null : Number(rule.buy_x),
               min_subtotal:
                 rule.min_subtotal === null ? null : Number(rule.min_subtotal),
             }}

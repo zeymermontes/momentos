@@ -3,12 +3,11 @@
 import {
   useRef,
   useState,
-  useCallback,
   useEffect,
   type PointerEvent as RPointerEvent,
-  type WheelEvent as RWheelEvent,
 } from "react";
-import type { CropState } from "@/lib/photobook";
+import { RotateCw } from "lucide-react";
+import type { CropState } from "@/lib/photobook-config";
 
 type Props = {
   src: string;
@@ -16,8 +15,16 @@ type Props = {
   imgHeight: number;
   crop: CropState;
   onChange: (crop: CropState) => void;
-  containerSize?: number;
+  titleOverlay?: string;
 };
+
+const PAN_DAMPING = 0.45;
+const ZOOM_FACTOR = 1.04;
+const MIN_SCALE = 0.01;
+
+const REF = 400;
+const REF_CONTENT = REF * 0.8;
+const REF_MARGIN = REF * 0.1;
 
 export function ImageCropper({
   src,
@@ -25,46 +32,40 @@ export function ImageCropper({
   imgHeight,
   crop,
   onChange,
-  containerSize = 400,
+  titleOverlay,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
   const lastPos = useRef({ x: 0, y: 0 });
-  const [size, setSize] = useState(containerSize);
+  const [displaySize, setDisplaySize] = useState(REF);
+
+  const live = useRef(crop);
+  live.current = crop;
+
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const ro = new ResizeObserver(([entry]) => {
-      setSize(Math.round(entry.contentRect.width));
+      setDisplaySize(Math.round(entry.contentRect.width));
     });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
 
-  const contentSize = size * 0.8;
+  const scaleRatio = displaySize / REF;
 
   const aspect = imgWidth / imgHeight;
-  const containW = aspect >= 1 ? contentSize : contentSize * aspect;
-  const containH = aspect >= 1 ? contentSize / aspect : contentSize;
+  const isLandscape = aspect >= 1;
+  const containW = isLandscape ? REF_CONTENT : REF_CONTENT * aspect;
+  const containH = isLandscape ? REF_CONTENT / aspect : REF_CONTENT;
 
-  const displayW = containW * crop.scale;
-  const displayH = containH * crop.scale;
+  const rotation = crop.rotation ?? 0;
 
-  const clamp = useCallback(
-    (x: number, y: number, s: number) => {
-      const dW = (aspect >= 1 ? contentSize : contentSize * aspect) * s;
-      const dH = (aspect >= 1 ? contentSize / aspect : contentSize) * s;
-      const maxX = Math.max(0, (dW - contentSize) / 2);
-      const maxY = Math.max(0, (dH - contentSize) / 2);
-      return {
-        x: Math.min(maxX, Math.max(-maxX, x)),
-        y: Math.min(maxY, Math.max(-maxY, y)),
-      };
-    },
-    [aspect, contentSize],
-  );
-
+  // --- Pointer (pan) ---
+  // Mouse deltas are in display-space pixels; convert to REF-space.
   const onPointerDown = (e: RPointerEvent) => {
     if (e.button !== 0) return;
     dragging.current = true;
@@ -74,84 +75,167 @@ export function ImageCropper({
 
   const onPointerMove = (e: RPointerEvent) => {
     if (!dragging.current) return;
-    const dx = e.clientX - lastPos.current.x;
-    const dy = e.clientY - lastPos.current.y;
+    const rawDx = (e.clientX - lastPos.current.x) * PAN_DAMPING;
+    const rawDy = (e.clientY - lastPos.current.y) * PAN_DAMPING;
     lastPos.current = { x: e.clientX, y: e.clientY };
-    const clamped = clamp(crop.x + dx, crop.y + dy, crop.scale);
-    onChange({ ...crop, ...clamped });
+    const dx = rawDx / scaleRatio;
+    const dy = rawDy / scaleRatio;
+    const c = live.current;
+    const next: CropState = { ...c, x: c.x + dx, y: c.y + dy };
+    live.current = next;
+    onChange(next);
   };
 
   const onPointerUp = () => {
     dragging.current = false;
   };
 
-  const onWheel = (e: RWheelEvent) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.95 : 1.05;
-    const newScale = Math.min(4, Math.max(1, crop.scale * delta));
-    const clamped = clamp(crop.x, crop.y, newScale);
-    onChange({ ...crop, scale: newScale, ...clamped });
-  };
+  // --- Wheel (zoom toward cursor) ---
+  const scaleRef = useRef(scaleRatio);
+  scaleRef.current = scaleRatio;
 
-  const margin = size * 0.1;
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    function handleWheel(e: WheelEvent) {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const c = live.current;
+      const sr = scaleRef.current;
+      const factor = e.deltaY > 0 ? (1 / ZOOM_FACTOR) : ZOOM_FACTOR;
+      const newScale = Math.max(MIN_SCALE, c.scale * factor);
+
+      const ratio = newScale / c.scale;
+      const rect = el!.getBoundingClientRect();
+      // Convert display-space mouse position to REF-space content-area coordinates
+      const mx = (e.clientX - rect.left) / sr - REF_MARGIN;
+      const my = (e.clientY - rect.top) / sr - REF_MARGIN;
+
+      const newX = (1 - ratio) * (mx - REF_CONTENT / 2) + ratio * c.x;
+      const newY = (1 - ratio) * (my - REF_CONTENT / 2) + ratio * c.y;
+
+      const next: CropState = { ...c, scale: newScale, x: newX, y: newY };
+      live.current = next;
+      onChangeRef.current(next);
+    }
+
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
+  }, []);
+
+  function handleRotate() {
+    const c = live.current;
+    const next: CropState = { ...c, rotation: ((c.rotation ?? 0) + 90) % 360 };
+    live.current = next;
+    onChange(next);
+  }
 
   return (
-    <div
-      ref={containerRef}
-      className="relative aspect-square w-full select-none overflow-hidden rounded-lg bg-white shadow-inner"
-      style={{ maxWidth: containerSize }}
-    >
-      {/* Margin overlay */}
+    <div className="space-y-2">
       <div
-        className="absolute inset-0 pointer-events-none z-10"
-        style={{
-          borderWidth: margin,
-          borderColor: "rgba(255,255,255,0.85)",
-          borderStyle: "solid",
-        }}
-      />
-
-      {/* Content area */}
-      <div
-        className="absolute overflow-hidden"
-        style={{
-          top: margin,
-          left: margin,
-          width: contentSize,
-          height: contentSize,
-          cursor: crop.scale > 1 ? "grab" : "default",
-        }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        onWheel={onWheel}
+        ref={containerRef}
+        className="relative aspect-square w-full select-none overflow-hidden bg-white shadow-inner"
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={src}
-          alt=""
-          draggable={false}
-          className="absolute select-none"
+        {/* Scaled visual layer — renders at REF size, CSS-scaled to fit */}
+        <div
           style={{
-            width: displayW,
-            height: displayH,
-            left: (contentSize - displayW) / 2 + crop.x,
-            top: (contentSize - displayH) / 2 + crop.y,
+            width: REF,
+            height: REF,
+            transform: `scale(${scaleRatio})`,
+            transformOrigin: "top left",
+            position: "absolute",
+            pointerEvents: "none",
           }}
+        >
+          {/* Margin overlay */}
+          <div
+            className="absolute"
+            style={{
+              inset: 0,
+              borderWidth: REF_MARGIN,
+              borderColor: "rgba(255,255,255,0.85)",
+              borderStyle: "solid",
+              zIndex: 10,
+            }}
+          />
+
+          {/* Content area */}
+          <div
+            className="absolute"
+            style={{
+              top: REF_MARGIN,
+              left: REF_MARGIN,
+              width: REF_CONTENT,
+              height: REF_CONTENT,
+            }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={src}
+              alt=""
+              draggable={false}
+              className="absolute select-none"
+              style={{
+                width: containW,
+                height: "auto",
+                aspectRatio: `${imgWidth} / ${imgHeight}`,
+                left: (REF_CONTENT - containW) / 2,
+                top: (REF_CONTENT - containH) / 2,
+                transformOrigin: "center center",
+                transform: `translate(${crop.x}px, ${crop.y}px) scale(${crop.scale}) rotate(${rotation}deg)`,
+              }}
+            />
+          </div>
+
+          {/* Margin lines */}
+          <div
+            className="absolute border border-dashed border-gray-300"
+            style={{
+              top: REF_MARGIN,
+              left: REF_MARGIN,
+              width: REF_CONTENT,
+              height: REF_CONTENT,
+              zIndex: 20,
+            }}
+          />
+
+          {/* Title in bottom margin (cover only) */}
+          {titleOverlay && (
+            <div
+              className="absolute left-0 right-0 flex items-center justify-center"
+              style={{ bottom: 0, height: REF_MARGIN, zIndex: 20 }}
+            >
+              <span className="text-sm font-semibold text-gray-700 truncate px-4">
+                {titleOverlay}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Invisible interaction layer at actual display size */}
+        <div
+          className="absolute inset-0 z-30"
+          style={{ cursor: "grab" }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
         />
       </div>
 
-      {/* Margin lines */}
-      <div
-        className="absolute pointer-events-none z-20 border border-dashed border-gray-300"
-        style={{
-          top: margin,
-          left: margin,
-          width: contentSize,
-          height: contentSize,
-        }}
-      />
+      {/* Toolbar */}
+      <div className="flex justify-center">
+        <button
+          type="button"
+          onClick={handleRotate}
+          className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+        >
+          <RotateCw className="h-3.5 w-3.5" />
+          Rotar 90°
+        </button>
+      </div>
     </div>
   );
 }

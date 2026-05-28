@@ -1,40 +1,25 @@
 import { createClient } from "@/lib/supabase/server";
+import { DEFAULT_CROP, DEFAULT_SETTINGS } from "@/lib/photobook-config";
+import type { CropState, PhotobookProject, PhotobookPage, PhotobookSettings } from "@/lib/photobook-config";
 
-export type CropState = {
-  x: number;
-  y: number;
-  scale: number;
-};
+export type { CropState, PhotobookProject, PhotobookPage, PhotobookSettings };
+export { DEFAULT_SETTINGS, getPhotobookPrice } from "@/lib/photobook-config";
 
-export type PhotobookProject = {
-  id: string;
-  user_id: string;
-  size_cm: number;
-  page_count: number;
-  title: string;
-  cover_image_path: string | null;
-  cover_crop: CropState;
-  status: string;
-};
-
-export type PhotobookPage = {
-  id: string;
-  project_id: string;
-  sort_order: number;
-  image_path: string | null;
-  crop: CropState;
-  image_url?: string | null;
-};
-
-export const SIZES = [
-  { cm: 15, label: "Pequeño", sublabel: "15 × 15 cm" },
-  { cm: 20, label: "Mediano", sublabel: "20 × 20 cm" },
-  { cm: 30, label: "Grande", sublabel: "30 × 30 cm" },
-] as const;
-
-export const PAGE_COUNTS = [20, 40, 60] as const;
-
-const DEFAULT_CROP: CropState = { x: 0, y: 0, scale: 1 };
+export async function getPhotobookSettings(): Promise<PhotobookSettings> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("site_settings")
+    .select("value")
+    .eq("key", "photobook")
+    .maybeSingle();
+  if (!data?.value || typeof data.value !== "object") return DEFAULT_SETTINGS;
+  const v = data.value as Record<string, unknown>;
+  return {
+    sizes: Array.isArray(v.sizes) ? v.sizes as PhotobookSettings["sizes"] : DEFAULT_SETTINGS.sizes,
+    page_counts: Array.isArray(v.page_counts) ? v.page_counts as number[] : DEFAULT_SETTINGS.page_counts,
+    enabled: typeof v.enabled === "boolean" ? v.enabled : true,
+  };
+}
 
 function parseCrop(v: unknown): CropState {
   if (!v || typeof v !== "object") return DEFAULT_CROP;
@@ -43,7 +28,17 @@ function parseCrop(v: unknown): CropState {
     x: typeof c.x === "number" ? c.x : 0,
     y: typeof c.y === "number" ? c.y : 0,
     scale: typeof c.scale === "number" ? c.scale : 1,
+    rotation: typeof c.rotation === "number" ? c.rotation : 0,
   };
+}
+
+async function signUrl(path: string | null): Promise<string | null> {
+  if (!path) return null;
+  const supabase = await createClient();
+  const { data } = await supabase.storage
+    .from("customer-uploads")
+    .createSignedUrl(path, 3600);
+  return data?.signedUrl ?? null;
 }
 
 export async function getProject(projectId: string): Promise<PhotobookProject | null> {
@@ -70,12 +65,12 @@ export async function getProjectPages(projectId: string): Promise<PhotobookPage[
   const withUrls = await Promise.all(
     (pages as unknown as PhotobookPage[]).map(async (p) => {
       const page: PhotobookPage = { ...p, crop: parseCrop(p.crop) };
-      if (p.image_path) {
-        const { data } = await supabase.storage
-          .from("customer-uploads")
-          .createSignedUrl(p.image_path, 3600);
-        page.image_url = data?.signedUrl ?? null;
-      }
+      const [imageUrl, thumbUrl] = await Promise.all([
+        signUrl(p.image_path),
+        signUrl(p.thumb_path),
+      ]);
+      page.image_url = imageUrl;
+      page.thumb_url = thumbUrl;
       return page;
     }),
   );
@@ -83,10 +78,9 @@ export async function getProjectPages(projectId: string): Promise<PhotobookPage[
 }
 
 export async function getCoverUrl(project: PhotobookProject): Promise<string | null> {
-  if (!project.cover_image_path) return null;
-  const supabase = await createClient();
-  const { data } = await supabase.storage
-    .from("customer-uploads")
-    .createSignedUrl(project.cover_image_path, 3600);
-  return data?.signedUrl ?? null;
+  return signUrl(project.cover_image_path);
+}
+
+export async function getCoverThumbUrl(project: PhotobookProject): Promise<string | null> {
+  return signUrl(project.cover_thumb_path);
 }

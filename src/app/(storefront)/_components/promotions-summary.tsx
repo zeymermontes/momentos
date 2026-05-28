@@ -38,8 +38,21 @@ export function PromotionsSummary({
         >
           <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
-            Faltan{" "}
-            <strong>{formatMXN(p.missing_to_qualify ?? 0)}</strong> para{" "}
+            {p.missing_type === "quantity" ? (
+              <>
+                Agrega{" "}
+                <strong>
+                  {p.missing_to_qualify ?? 0}{" "}
+                  {(p.missing_to_qualify ?? 0) === 1 ? "unidad más" : "unidades más"}
+                </strong>{" "}
+                para{" "}
+              </>
+            ) : (
+              <>
+                Faltan{" "}
+                <strong>{formatMXN(p.missing_to_qualify ?? 0)}</strong> para{" "}
+              </>
+            )}
             <span className="font-medium">{p.rule.label}</span>
           </span>
         </div>

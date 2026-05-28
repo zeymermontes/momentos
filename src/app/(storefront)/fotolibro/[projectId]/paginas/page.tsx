@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
-import { getProject, getProjectPages } from "@/lib/photobook";
+import { getProject, getProjectPages, getPhotobookSettings } from "@/lib/photobook";
 import { StepIndicator } from "@/components/photobook/step-indicator";
 import { PagesGrid } from "@/components/photobook/pages-grid";
 
@@ -17,12 +17,15 @@ export default async function PagesPage({
   const project = await getProject(projectId);
   if (!project) notFound();
 
-  const pages = await getProjectPages(projectId);
+  const [pages, settings] = await Promise.all([
+    getProjectPages(projectId),
+    getPhotobookSettings(),
+  ]);
 
   return (
     <>
       <StepIndicator projectId={projectId} current="paginas" />
-      <PagesGrid projectId={projectId} pages={pages} userId={user.id} />
+      <PagesGrid projectId={projectId} pages={pages} userId={user.id} currentPageCount={project.page_count} sizeCm={project.size_cm} settings={settings} />
     </>
   );
 }

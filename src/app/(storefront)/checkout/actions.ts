@@ -10,10 +10,22 @@ import { mpPreference } from "@/lib/mercadopago";
 import { env } from "@/lib/env";
 import {
   getActivePromotionRules,
+} from "@/lib/promotions";
+import {
   evaluatePromotions,
   snapshotApplied,
   type CartItemForPromo,
-} from "@/lib/promotions";
+  type AppliedPromotionSnapshot,
+} from "@/lib/promotions-engine";
+import {
+  evaluatePromoCode,
+  snapshotCodeApplication,
+  type PromoCode,
+} from "@/lib/promo-codes";
+import {
+  validatePromoCode,
+  incrementCodeUsage,
+} from "@/lib/promo-codes-server";
 import type { Json } from "@/lib/supabase/database.types";
 
 const SHIPPING_FLAT_MXN = 100;
@@ -36,7 +48,7 @@ export type CreateOrderState = {
 
 type CartItemRow = {
   id: string;
-  product_id: string;
+  product_id: string | null;
   variant_id: string | null;
   quantity: number;
   unit_price: number;
@@ -120,7 +132,7 @@ export async function createOrderAction(
 
     // Fetch additional category links for multi-category products so the
     // promotion engine evaluates them correctly.
-    const productIds = items.map((i) => i.product_id);
+    const productIds = items.map((i) => i.product_id).filter(Boolean) as string[];
     const { data: extraCats } = await cart.supabase
       .from("product_categories")
       .select("product_id, category_id")
@@ -131,13 +143,17 @@ export async function createOrderAction(
       arr.push(link.category_id);
       extraByProduct.set(link.product_id, arr);
     }
-    const promoItems: CartItemForPromo[] = items.map((i) => ({
-      product_id: i.product_id,
+    const promoItems: CartItemForPromo[] = items.map((i) => {
+      const cust = i.customization as Record<string, unknown> | null;
+      return {
+      product_id: i.product_id ?? "",
       category_id: i.products?.category_id ?? null,
-      additional_category_ids: extraByProduct.get(i.product_id) ?? [],
+      additional_category_ids: i.product_id ? (extraByProduct.get(i.product_id) ?? []) : [],
       quantity: Number(i.quantity),
       unit_price: Number(i.unit_price),
-    }));
+      is_photobook: cust?.type === "photobook",
+    };
+    });
 
     const rules = await getActivePromotionRules();
     const promos = evaluatePromotions(rules, promoItems, rawShipping);
@@ -146,10 +162,74 @@ export async function createOrderAction(
       (acc, i) => acc + Number(i.unit_price) * Number(i.quantity),
       0,
     );
-    const shippingCost = promos.free_shipping ? 0 : rawShipping;
+
+    // Re-validate manual promo code server-side
+    const rawCode = formData.get("promo_code");
+    let appliedCode: {
+      promo: PromoCode;
+      discount: number;
+      free_shipping: boolean;
+    } | null = null;
+    if (typeof rawCode === "string" && rawCode.trim()) {
+      const validation = await validatePromoCode(rawCode, subtotal);
+      if (validation.ok) {
+        const evalCode = evaluatePromoCode(
+          validation.promo,
+          subtotal,
+          rawShipping,
+        );
+        appliedCode = {
+          promo: validation.promo,
+          discount: evalCode.discount_amount,
+          free_shipping: evalCode.free_shipping,
+        };
+      }
+    }
+
+    const freeShipping = promos.free_shipping || (appliedCode?.free_shipping ?? false);
+    const shippingCost = freeShipping ? 0 : rawShipping;
     const subtotalDiscount =
-      promos.total_discount - (promos.free_shipping ? rawShipping : 0);
+      promos.total_discount -
+      (promos.free_shipping ? rawShipping : 0) +
+      (appliedCode
+        ? appliedCode.discount - (appliedCode.free_shipping ? rawShipping : 0)
+        : 0);
     const total = round2(subtotal + shippingCost - subtotalDiscount);
+
+    const snapshotList: AppliedPromotionSnapshot[] = [
+      ...snapshotApplied(promos.applied),
+    ];
+    if (appliedCode) {
+      snapshotList.push(
+        snapshotCodeApplication(appliedCode.promo, {
+          rule: {
+            id: appliedCode.promo.id,
+            name: appliedCode.promo.code,
+            label: appliedCode.promo.label,
+            description: appliedCode.promo.description,
+            type:
+              appliedCode.promo.discount_type === "percent"
+                ? "percent_off"
+                : appliedCode.promo.discount_type === "amount"
+                  ? "amount_off"
+                  : "free_shipping",
+            discount_value: appliedCode.promo.value,
+            min_subtotal: appliedCode.promo.min_subtotal,
+            buy_x: null,
+            scope: "all",
+            starts_at: appliedCode.promo.starts_at,
+            ends_at: appliedCode.promo.ends_at,
+            sort_order: 0,
+            active: appliedCode.promo.active,
+            product_ids: [],
+            category_ids: [],
+          },
+          qualified: true,
+          discount_amount: appliedCode.discount,
+          free_shipping: appliedCode.free_shipping,
+        }),
+      );
+    }
 
     const { data: order, error: orderErr } = await supabase
       .from("orders")
@@ -165,8 +245,8 @@ export async function createOrderAction(
         payment_provider: "mercadopago",
         discount_amount: round2(subtotalDiscount),
         applied_promotions:
-          promos.applied.length > 0
-            ? (snapshotApplied(promos.applied) as unknown as Json)
+          snapshotList.length > 0
+            ? (snapshotList as unknown as Json)
             : null,
       })
       .select("id, total")
@@ -175,21 +255,47 @@ export async function createOrderAction(
       return { message: orderErr?.message ?? "No se pudo crear el pedido." };
     }
 
-    const orderItemsInsert = items.map((i) => ({
-      order_id: order.id,
-      product_id: i.product_id,
-      product_name: i.products?.name ?? "Producto",
-      variant_name: i.product_variants?.name ?? null,
-      quantity: i.quantity,
-      unit_price: i.unit_price,
-      customization: (i.customization ?? null) as never,
-      uploaded_file_url: i.uploaded_file_url,
-      preview_url: i.preview_url,
-    }));
+    const orderItemsInsert = items.map((i) => {
+      const cust = i.customization as Record<string, unknown> | null;
+      const isPhotobook = cust?.type === "photobook";
+      return {
+        order_id: order.id,
+        product_id: i.product_id ?? null,
+        product_name: isPhotobook
+          ? `Fotolibro — ${cust?.title ?? "Sin título"}`
+          : (i.products?.name ?? "Producto"),
+        variant_name: isPhotobook
+          ? `${cust?.size_cm}×${cust?.size_cm} cm · ${cust?.page_count} páginas · ${cust?.hardcover ? "Pasta dura" : "Pasta blanda"}`
+          : (i.product_variants?.name ?? null),
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        customization: (i.customization ?? null) as never,
+        uploaded_file_url: i.uploaded_file_url,
+        preview_url: i.preview_url,
+      };
+    });
     const { error: itemsErr } = await supabase
       .from("order_items")
       .insert(orderItemsInsert);
     if (itemsErr) return { message: itemsErr.message };
+
+    // Mark any photobook projects in this order as "ordered"
+    const photobookIds = items
+      .map((i) => {
+        const c = i.customization as Record<string, unknown> | null;
+        return c?.type === "photobook" ? String(c.photobook_project_id) : null;
+      })
+      .filter(Boolean) as string[];
+    if (photobookIds.length > 0) {
+      await supabase
+        .from("photobook_projects")
+        .update({ status: "ordered", updated_at: new Date().toISOString() })
+        .in("id", photobookIds);
+    }
+
+    if (appliedCode) {
+      await incrementCodeUsage(appliedCode.promo.id);
+    }
 
     await clearUserCart();
     revalidatePath("/carrito");
@@ -271,4 +377,37 @@ export async function createPreferenceForOrder(
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+// ============================================================
+// Promo code validation (used by the checkout client to preview)
+// ============================================================
+
+export type ValidatePromoCodeResult =
+  | {
+      ok: true;
+      promo: PromoCode;
+      discount_amount: number;
+      free_shipping: boolean;
+    }
+  | { ok: false; message: string };
+
+export async function validatePromoCodeAction(input: {
+  code: string;
+  cart_subtotal: number;
+  shipping_cost: number;
+}): Promise<ValidatePromoCodeResult> {
+  const validation = await validatePromoCode(input.code, input.cart_subtotal);
+  if (!validation.ok) return validation;
+  const evaluated = evaluatePromoCode(
+    validation.promo,
+    input.cart_subtotal,
+    input.shipping_cost,
+  );
+  return {
+    ok: true,
+    promo: validation.promo,
+    discount_amount: evaluated.discount_amount,
+    free_shipping: evaluated.free_shipping,
+  };
 }
