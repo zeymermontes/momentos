@@ -87,8 +87,13 @@ export default async function CheckoutSuccessPage({
   const approved = mpStatus === "approved";
   const pending = mpStatus === "pending" || mpStatus === "in_process";
   const hasVoucher = Boolean(ticketUrl || barcodeContent);
+  const isBankTransfer =
+    paymentMethodId === "pse" ||
+    paymentMethodId === "bank_transfer" ||
+    paymentMethodId === "spei";
   const isCashPayment =
     hasVoucher ||
+    isBankTransfer ||
     paymentMethodId === "oxxo" ||
     paymentMethodId === "pagofacil" ||
     paymentMethodId === "rapipago";
@@ -126,7 +131,9 @@ export default async function CheckoutSuccessPage({
             {approved
               ? "¡Gracias por tu compra!"
               : isCashPayment && pending
-                ? "Casi listo — completa tu pago en efectivo"
+                ? isBankTransfer
+                  ? "Casi listo — completa tu transferencia"
+                  : "Casi listo — completa tu pago en efectivo"
                 : pending
                   ? "Estamos confirmando tu pago"
                   : "No pudimos confirmar tu pago"}
@@ -135,7 +142,7 @@ export default async function CheckoutSuccessPage({
             {approved
               ? "Recibimos tu pago y tu pedido entró en producción."
               : isCashPayment && pending
-                ? "Presenta el comprobante en la sucursal indicada para finalizar tu compra. Tu pedido se procesará cuando confirmemos el pago."
+                ? "Sigue las instrucciones del comprobante para finalizar tu compra. Tu pedido se procesará cuando confirmemos el pago."
                 : pending
                   ? "MercadoPago está procesando tu pago. Te notificaremos cuando se confirme."
                   : "Si crees que es un error, revisa el estado en tus pedidos o vuelve a intentar."}
@@ -176,8 +183,9 @@ export default async function CheckoutSuccessPage({
               ) : null}
 
               <p className="text-xs text-amber-800">
-                Guarda el comprobante o tómale una captura — lo necesitarás
-                para pagar en la sucursal.
+                {isBankTransfer
+                  ? "Abre el comprobante y haz la transferencia desde tu banca en línea o app antes de la fecha de vencimiento."
+                  : "Guarda el comprobante o tómale una captura — lo necesitarás para pagar en la sucursal."}
               </p>
             </div>
           ) : null}

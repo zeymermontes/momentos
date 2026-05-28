@@ -57,6 +57,10 @@ export default async function ResumePaymentPage({
         timeStyle: "short",
       })
     : null;
+  const isBankTransfer =
+    voucher?.paymentMethodId === "pse" ||
+    voucher?.paymentMethodId === "bank_transfer" ||
+    voucher?.paymentMethodId === "spei";
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6 lg:px-8">
@@ -98,11 +102,14 @@ export default async function ResumePaymentPage({
             <FileText className="mt-0.5 h-5 w-5 shrink-0" />
             <div>
               <h2 className="text-lg font-semibold">
-                Comprobante de pago en efectivo
+                {isBankTransfer
+                  ? "Datos para tu transferencia"
+                  : "Comprobante de pago en efectivo"}
               </h2>
               <p className="text-sm text-amber-800">
-                Ya generamos un comprobante para este pedido. Preséntalo en la
-                sucursal para finalizar tu compra.
+                {isBankTransfer
+                  ? "Ya generamos los datos de transferencia para este pedido. Ábrelos y haz la transferencia desde tu banca en línea o app."
+                  : "Ya generamos un comprobante para este pedido. Preséntalo en la sucursal para finalizar tu compra."}
               </p>
             </div>
           </div>
@@ -115,7 +122,9 @@ export default async function ResumePaymentPage({
               className={cn(buttonVariants({ size: "lg" }), "w-full gap-2")}
             >
               <FileText className="h-4 w-4" />
-              Abrir comprobante de pago
+              {isBankTransfer
+                ? "Ver datos de transferencia"
+                : "Abrir comprobante de pago"}
             </a>
           ) : null}
 

@@ -46,14 +46,28 @@ export async function getPendingVoucher(
   try {
     const payment = await mpPayment().get({ id: paymentId });
     if (payment.status !== "pending" && payment.status !== "in_process") {
+      console.info(
+        `[mp] voucher: payment ${paymentId} status=${payment.status}, skipping`,
+      );
       return null;
     }
+    // MP returns the voucher URL in different places depending on the payment
+    // method / SDK version. Check all known paths.
     const txData = payment.point_of_interaction?.transaction_data as
       | { ticket_url?: string; barcode?: { content?: string } }
       | undefined;
-    const ticketUrl = txData?.ticket_url ?? null;
+    const txDetails = payment.transaction_details as
+      | { external_resource_url?: string }
+      | undefined;
+    const ticketUrl =
+      txData?.ticket_url ?? txDetails?.external_resource_url ?? null;
     const barcodeContent = txData?.barcode?.content ?? null;
-    if (!ticketUrl && !barcodeContent) return null;
+    if (!ticketUrl && !barcodeContent) {
+      console.info(
+        `[mp] voucher: payment ${paymentId} method=${payment.payment_method_id} type=${payment.payment_type_id} has no ticket_url/barcode`,
+      );
+      return null;
+    }
     const expirationDate = payment.date_of_expiration ?? null;
     if (expirationDate && new Date(expirationDate) < new Date()) return null;
     return {

@@ -92,8 +92,29 @@ export function PaymentBrick({ orderId, total, publicKey, email }: Props) {
             debitCard: "all",
             ticket: "all",
             atm: "all",
+            bankTransfer: "all",
+            mercadoPago: "all",
           },
-          visual: { style: { theme: "default" } },
+          visual: {
+            style: {
+              theme: "default",
+              customVariables: {
+                baseColor: "#F272b3",
+                baseColorFirstVariant: "#E55BA0",
+                baseColorSecondVariant: "#D94A93",
+                successColor: "#10b981",
+                errorColor: "#ef4444",
+                outlinePrimaryColor: "#F272b3",
+                buttonTextColor: "#ffffff",
+                borderRadiusLarge: "0.75rem",
+                borderRadiusMedium: "0.5rem",
+                borderRadiusSmall: "0.375rem",
+                formInputsTextColor: "#0a0a0a",
+                formLabelTextColor: "#0a0a0a",
+                inputBackgroundColor: "#ffffff",
+              },
+            },
+          },
         }}
         onReady={() => setReady(true)}
         onError={(err) => {

@@ -83,6 +83,10 @@ export default async function OrderDetailPage({ params }: { params: Params }) {
         timeStyle: "short",
       })
     : null;
+  const isBankTransfer =
+    voucher?.paymentMethodId === "pse" ||
+    voucher?.paymentMethodId === "bank_transfer" ||
+    voucher?.paymentMethodId === "spei";
 
   return (
     <div className="space-y-4">
@@ -113,11 +117,14 @@ export default async function OrderDetailPage({ params }: { params: Params }) {
             <FileText className="mt-0.5 h-4 w-4 shrink-0" />
             <div>
               <p className="font-semibold">
-                Tienes un pago en efectivo pendiente
+                {isBankTransfer
+                  ? "Tienes una transferencia pendiente"
+                  : "Tienes un pago en efectivo pendiente"}
               </p>
               <p className="text-amber-800">
-                Presenta el comprobante en la sucursal para finalizar tu
-                compra.
+                {isBankTransfer
+                  ? "Abre el comprobante para ver los datos de la transferencia."
+                  : "Presenta el comprobante en la sucursal para finalizar tu compra."}
               </p>
             </div>
           </div>
@@ -152,9 +159,9 @@ export default async function OrderDetailPage({ params }: { params: Params }) {
           ) : null}
 
           <p className="text-xs text-amber-800">
-            ¿No vas a pagar en efectivo?{" "}
+            ¿Prefieres pagar con otro método?{" "}
             <Link
-              href={`/checkout/pagar/${order.id}`}
+              href={`/checkout/pagar/${order.id}?nuevo=1`}
               className="font-medium underline"
             >
               Elige otro método de pago
