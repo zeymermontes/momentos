@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef, useTransition, useCallback } from "react";
+import { useEffect, useState, useRef, useTransition, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   DndContext,
   closestCenter,
@@ -41,11 +42,26 @@ type Props = {
 };
 
 export function PagesGrid({ projectId, pages: initialPages, userId, currentPageCount, sizeCm, settings }: Props) {
+  const router = useRouter();
   const [pages, setPages] = useState(initialPages);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const [, startTransition] = useTransition();
+
+  // After a bulk upload some thumb_url calls can fail transiently (mobile
+  // network blips, signing rate limit). When that happens the upload IS
+  // persisted but the local optimistic state has thumb_url=null and the
+  // last cells render as empty. Re-sync from server-supplied initialPages
+  // whenever it changes — but only when we're not actively uploading, so
+  // we don't clobber an in-flight optimistic update.
+  const initialRef = useRef(initialPages);
+  useEffect(() => {
+    if (uploading) return;
+    if (initialRef.current === initialPages) return;
+    initialRef.current = initialPages;
+    setPages(initialPages);
+  }, [initialPages, uploading]);
 
   // Overflow popup state
   const [overflowPopup, setOverflowPopup] = useState<{
@@ -128,6 +144,11 @@ export function PagesGrid({ projectId, pages: initialPages, userId, currentPageC
     }
 
     setUploading(false);
+    // Server has the canonical state and freshly signed URLs. Refresh so
+    // initialPages updates with everything (including thumb URLs that
+    // may have failed to sign client-side). The useEffect above syncs
+    // local state once the refresh lands.
+    router.refresh();
   }
 
   function handleFilesSelected(fileList: FileList) {
