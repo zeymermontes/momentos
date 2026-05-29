@@ -40,25 +40,18 @@ export default async function PreviewPage({
         <h2 className="text-2xl font-bold">Vista previa de tu fotolibro</h2>
 
         <BookPreview3D project={project} coverUrl={coverUrl} pages={pages} />
+
+        {filledCount > 0 ? (
+          <AddToCartButton
+            projectId={projectId}
+            sizeCm={project.size_cm}
+            pageCount={project.page_count}
+            settings={settings}
+          />
+        ) : null}
       </div>
 
-      <StepNav
-        back={{ href: `/fotolibro/${projectId}/paginas` }}
-        next={
-          filledCount > 0
-            ? {
-                node: (
-                  <AddToCartButton
-                    projectId={projectId}
-                    sizeCm={project.size_cm}
-                    pageCount={project.page_count}
-                    settings={settings}
-                  />
-                ),
-              }
-            : undefined
-        }
-      />
+      <StepNav back={{ href: `/fotolibro/${projectId}/paginas` }} />
     </>
   );
 }

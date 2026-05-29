@@ -14,6 +14,12 @@ import type { CropState } from "@/lib/photobook-config";
 // viewports without touching the internal layout.
 const REF_BOOK = 320;
 const REF_SPREAD = REF_BOOK * 2;
+// Reserved horizontal room (per side) for the drop-shadow on the book and
+// the box-shadows on the leaves to render without bleeding past the
+// wrapper. The open spread visually caps at parentWidth - 40 px on
+// mobile so the shadows have room; on desktop the scale clamps at 1
+// and we use the original 320×320 book regardless.
+const SHADOW_PAD = 20;
 
 type Props = {
   project: PhotobookProject;
@@ -54,6 +60,12 @@ export function BookPreview3D({ project, coverUrl, pages }: Props) {
 
   const totalLeaves = leaves.length;
   const [flippedCount, setFlippedCount] = useState(0);
+  // Index of the leaf currently mid-animation. While a leaf is rotating
+  // we override its zIndex so it stays on top regardless of the new
+  // flipped/unflipped value — otherwise the leaf below it pops into
+  // view at click time, before the rotation completes (most visible
+  // when flipping back).
+  const [animatingLeaf, setAnimatingLeaf] = useState<number | null>(null);
 
   const canNext = flippedCount < totalLeaves;
   const canPrev = flippedCount > 0;
@@ -68,21 +80,35 @@ export function BookPreview3D({ project, coverUrl, pages }: Props) {
     if (!el) return;
     const ro = new ResizeObserver(([entry]) => {
       const w = entry.contentRect.width;
-      setScale(Math.min(1, w / REF_SPREAD));
+      // Subtract twice SHADOW_PAD so the visual shadows on each side fit
+      // inside the wrapper. Clamp to 0 to avoid a negative scale on very
+      // narrow containers.
+      const usable = Math.max(0, w - SHADOW_PAD * 2);
+      setScale(Math.min(1, usable / REF_SPREAD));
     });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
 
   function goNext() {
-    if (canNext) setFlippedCount((c) => c + 1);
+    if (!canNext) return;
+    // The leaf that's about to flip forward.
+    setAnimatingLeaf(flippedCount);
+    setFlippedCount((c) => c + 1);
   }
   function goPrev() {
-    if (canPrev) setFlippedCount((c) => c - 1);
+    if (!canPrev) return;
+    // The leaf that's about to flip back.
+    setAnimatingLeaf(flippedCount - 1);
+    setFlippedCount((c) => c - 1);
   }
 
   return (
-    <div className="flex flex-col items-center gap-6">
+    // `w-full` is required: without it, the flex column shrinks to fit
+    // its widest child, which is the scaled spread. ResizeObserver then
+    // measures THAT shrunken width and computes a smaller scale, causing
+    // a feedback loop that converges to a tiny book on every device.
+    <div className="flex w-full flex-col items-center gap-6">
       {/* Responsive wrapper: measure parent width, CSS-scale the spread */}
       <div ref={containerRef} className="w-full">
         <div
@@ -122,9 +148,14 @@ export function BookPreview3D({ project, coverUrl, pages }: Props) {
         {/* Leaves */}
         {leaves.map((leaf, i) => {
           const isFlipped = i < flippedCount;
-          const zIndex = isFlipped
-            ? leaves.length + i
-            : leaves.length - i;
+          // While this leaf is animating, keep it above everything else
+          // so the leaf underneath doesn't flash into view at t=0.
+          const isAnimating = animatingLeaf === i;
+          const zIndex = isAnimating
+            ? leaves.length * 2 + 10
+            : isFlipped
+              ? leaves.length + i
+              : leaves.length - i;
 
           return (
             <div
@@ -136,6 +167,12 @@ export function BookPreview3D({ project, coverUrl, pages }: Props) {
                 transform: `rotateY(${isFlipped ? -180 : 0}deg)`,
                 transition: "transform 0.8s cubic-bezier(0.645, 0.045, 0.355, 1)",
                 zIndex,
+              }}
+              onTransitionEnd={(e) => {
+                // Only react to our own rotateY transition, not any inner
+                // box-shadow / filter transitions bubbling up.
+                if (e.propertyName !== "transform") return;
+                if (animatingLeaf === i) setAnimatingLeaf(null);
               }}
             >
               {/* Front face */}
