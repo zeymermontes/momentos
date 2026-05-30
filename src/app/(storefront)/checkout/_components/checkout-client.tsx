@@ -15,6 +15,10 @@ import {
   type AppliedCode,
 } from "@/app/(storefront)/checkout/_components/promo-code-input";
 import {
+  GiftCardInput,
+  type AppliedGiftCard,
+} from "@/app/(storefront)/checkout/_components/gift-card-input";
+import {
   createOrderAction,
   type CreateOrderState,
 } from "@/app/(storefront)/checkout/actions";
@@ -54,6 +58,8 @@ type CartItem = {
   category_id: string | null;
   additional_category_ids: string[];
   is_photobook?: boolean;
+  is_gift_card?: boolean;
+  delivery_method?: "email" | "physical";
 };
 
 type Props = {
@@ -75,17 +81,34 @@ export function CheckoutClient({
   >(createOrderAction, undefined);
 
   const defaultAddress = addresses.find((a) => a.is_default) ?? addresses[0];
-  const [fulfillment, setFulfillment] = useState<"ship" | "pickup">(
-    addresses.length > 0 ? "ship" : "pickup",
+
+  // All-digital cart: every item is an email-delivered gift card. Skip the
+  // shipping picker entirely and lock fulfillment to "digital" so the
+  // server doesn't expect an address or branch.
+  const allDigital = items.every(
+    (i) => i.is_gift_card && i.delivery_method !== "physical",
+  );
+
+  const [fulfillment, setFulfillment] = useState<
+    "ship" | "pickup" | "digital"
+  >(
+    allDigital
+      ? "digital"
+      : addresses.length > 0
+        ? "ship"
+        : "pickup",
   );
   const [addressId, setAddressId] = useState<string>(defaultAddress?.id ?? "");
   const [branchId, setBranchId] = useState<string>(branches[0]?.id ?? "");
   const [appliedCode, setAppliedCode] = useState<AppliedCode | null>(null);
+  const [appliedGiftCard, setAppliedGiftCard] =
+    useState<AppliedGiftCard | null>(null);
 
   const subtotal = items.reduce(
     (acc, i) => acc + Number(i.unit_price) * Number(i.quantity),
     0,
   );
+  // Digital fulfillment never collects shipping. Pickup is free.
   const rawShipping = fulfillment === "ship" ? SHIPPING_FLAT_MXN : 0;
 
   const promos = evaluatePromotions(
@@ -110,7 +133,13 @@ export function CheckoutClient({
       (appliedCode.free_shipping ? rawShipping : 0)
     : 0;
   const subtotalDiscount = ruleSubtotalDiscount + codeSubtotalDiscount;
-  const total = subtotal + shipping - subtotalDiscount;
+  const totalAfterDiscounts = subtotal + shipping - subtotalDiscount;
+  // Cap the gift-card amount at the new total so changes to other discounts
+  // (rules / codes) don't leave us showing a negative total.
+  const giftCardAmount = appliedGiftCard
+    ? Math.min(appliedGiftCard.applied_amount, totalAfterDiscounts)
+    : 0;
+  const total = totalAfterDiscounts - giftCardAmount;
 
   return (
     // Single <form> wrapping all three grid cells: shipping fields, summary,
@@ -125,9 +154,9 @@ export function CheckoutClient({
       <input type="hidden" name="fulfillment" value={fulfillment} />
       {fulfillment === "ship" ? (
         <input type="hidden" name="address_id" value={addressId} />
-      ) : (
+      ) : fulfillment === "pickup" ? (
         <input type="hidden" name="branch_id" value={branchId} />
-      )}
+      ) : null}
       {appliedCode ? (
         <input
           type="hidden"
@@ -135,38 +164,62 @@ export function CheckoutClient({
           value={appliedCode.promo.code}
         />
       ) : null}
-
-      <div className="space-y-6 lg:col-start-1 lg:row-start-1">
-        <ShippingFields
-          state={state}
-          fulfillment={fulfillment}
-          setFulfillment={setFulfillment}
-          addressId={addressId}
-          setAddressId={setAddressId}
-          branchId={branchId}
-          setBranchId={setBranchId}
-          addresses={addresses}
-          branches={branches}
+      {appliedGiftCard ? (
+        <input
+          type="hidden"
+          name="gift_card_code"
+          value={appliedGiftCard.card.code}
         />
-      </div>
+      ) : null}
 
-      <div className="lg:col-start-2 lg:row-span-2 lg:row-start-1">
+      {allDigital ? null : (
+        <div className="space-y-6 lg:col-start-1 lg:row-start-1">
+          <ShippingFields
+            state={state}
+            fulfillment={fulfillment as "ship" | "pickup"}
+            setFulfillment={(v) => setFulfillment(v)}
+            addressId={addressId}
+            setAddressId={setAddressId}
+            branchId={branchId}
+            setBranchId={setBranchId}
+            addresses={addresses}
+            branches={branches}
+          />
+        </div>
+      )}
+
+      <div
+        className={cn(
+          "lg:col-start-2 lg:row-start-1",
+          allDigital ? "" : "lg:row-span-2",
+        )}
+      >
         <Summary
           items={items}
           subtotal={subtotal}
           rawShipping={rawShipping}
           shipping={shipping}
           subtotalDiscount={subtotalDiscount}
+          giftCardAmount={giftCardAmount}
+          totalAfterDiscounts={totalAfterDiscounts}
           total={total}
           fulfillment={fulfillment}
           promos={promos}
           appliedCode={appliedCode}
           onApplyCode={setAppliedCode}
           onRemoveCode={() => setAppliedCode(null)}
+          appliedGiftCard={appliedGiftCard}
+          onApplyGiftCard={setAppliedGiftCard}
+          onRemoveGiftCard={() => setAppliedGiftCard(null)}
         />
       </div>
 
-      <div className="lg:col-start-1 lg:row-start-2">
+      <div
+        className={cn(
+          "lg:col-start-1",
+          allDigital ? "lg:row-start-1" : "lg:row-start-2",
+        )}
+      >
         <ContinueButton
           disabled={
             (fulfillment === "ship" && !addressId) ||
@@ -337,24 +390,34 @@ function Summary({
   rawShipping,
   shipping,
   subtotalDiscount,
+  giftCardAmount,
+  totalAfterDiscounts,
   total,
   fulfillment,
   promos,
   appliedCode,
   onApplyCode,
   onRemoveCode,
+  appliedGiftCard,
+  onApplyGiftCard,
+  onRemoveGiftCard,
 }: {
   items: CartItem[];
   subtotal: number;
   rawShipping: number;
   shipping: number;
   subtotalDiscount: number;
+  giftCardAmount: number;
+  totalAfterDiscounts: number;
   total: number;
-  fulfillment: "ship" | "pickup";
+  fulfillment: "ship" | "pickup" | "digital";
   promos: ReturnType<typeof evaluatePromotions>;
   appliedCode: AppliedCode | null;
   onApplyCode: (a: AppliedCode) => void;
   onRemoveCode: () => void;
+  appliedGiftCard: AppliedGiftCard | null;
+  onApplyGiftCard: (a: AppliedGiftCard) => void;
+  onRemoveGiftCard: () => void;
 }) {
   void rawShipping;
   return (
@@ -392,13 +455,19 @@ function Summary({
           ))}
         </ul>
         <PromotionsSummary result={promos} />
-        <div className="border-t border-border pt-3">
+        <div className="space-y-3 border-t border-border pt-3">
           <PromoCodeInput
             cartSubtotal={subtotal}
             shippingCost={rawShipping}
             applied={appliedCode}
             onApply={onApplyCode}
             onRemove={onRemoveCode}
+          />
+          <GiftCardInput
+            previewTotal={totalAfterDiscounts}
+            applied={appliedGiftCard}
+            onApply={onApplyGiftCard}
+            onRemove={onRemoveGiftCard}
           />
         </div>
         <div className="space-y-2 border-t border-border pt-3 text-sm">
@@ -417,17 +486,35 @@ function Summary({
               Envío
               {fulfillment === "pickup" ? (
                 <span className="ml-1 text-xs">(recoger en sucursal)</span>
+              ) : fulfillment === "digital" ? (
+                <span className="ml-1 text-xs">(entrega digital)</span>
               ) : null}
             </span>
             <span className="font-medium">
-              {shipping === 0 ? "Gratis" : formatMXN(shipping)}
+              {fulfillment === "digital"
+                ? "—"
+                : shipping === 0
+                  ? "Gratis"
+                  : formatMXN(shipping)}
             </span>
           </div>
+          {giftCardAmount > 0 ? (
+            <div className="flex justify-between text-emerald-700">
+              <span>Gift card</span>
+              <span className="font-medium">-{formatMXN(giftCardAmount)}</span>
+            </div>
+          ) : null}
         </div>
         <div className="flex items-baseline justify-between border-t border-border pt-3">
           <span className="text-base font-semibold">Total</span>
           <span className="text-xl font-bold">{formatMXN(total)}</span>
         </div>
+        {total === 0 && giftCardAmount > 0 ? (
+          <p className="rounded-md bg-emerald-50 p-2 text-xs text-emerald-900">
+            Tu gift card cubre el pedido completo — al continuar, lo
+            confirmamos sin pasar por MercadoPago.
+          </p>
+        ) : null}
       </CardContent>
     </Card>
   );

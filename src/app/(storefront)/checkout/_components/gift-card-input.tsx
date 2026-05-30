@@ -107,7 +107,7 @@ export function GiftCardInput({
               submit();
             }
           }}
-          placeholder="HIRATA-XXXX-YYYY"
+          placeholder="MOMENTOS-XXXX-YYYY"
           className={cn(
             "font-mono uppercase tracking-wide",
             error && "border-destructive focus-visible:border-destructive",
