@@ -36,6 +36,7 @@ export default async function CartPage() {
       name: string;
       images: unknown;
       category_id: string | null;
+      is_gift_card: boolean;
     } | null;
     product_variants: { name: string } | null;
   };
@@ -43,7 +44,7 @@ export default async function CartPage() {
   const { data } = await cart.supabase
     .from("cart_items")
     .select(
-      "id, quantity, unit_price, uploaded_file_url, customization, preview_url, product_id, products!product_id(slug, name, images, category_id), product_variants(name)",
+      "id, quantity, unit_price, uploaded_file_url, customization, preview_url, product_id, products!product_id(slug, name, images, category_id, is_gift_card), product_variants(name)",
     )
     .eq("cart_id", cart.cartId)
     .order("created_at", { ascending: false });
@@ -131,6 +132,7 @@ export default async function CartPage() {
                   imageUrl={isPhotobook ? (i.preview_url ?? null) : (imgs[0] ?? null)}
                   uploadedFileUrl={i.uploaded_file_url ?? null}
                   customization={isPhotobook ? null : customization}
+                  isGiftCard={Boolean(product?.is_gift_card)}
                 />
               );
             })}

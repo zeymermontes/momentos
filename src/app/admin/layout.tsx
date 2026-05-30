@@ -13,6 +13,7 @@ import {
   Sparkles,
   Book,
   Ticket,
+  Gift,
   HelpCircle,
   LogOut,
 } from "lucide-react";
@@ -30,6 +31,7 @@ const navItems = [
   { href: "/admin/banners", label: "Banners", icon: ImageIcon },
   { href: "/admin/promociones", label: "Promociones", icon: Sparkles },
   { href: "/admin/codigos", label: "Códigos", icon: Ticket },
+  { href: "/admin/gift-cards", label: "Gift cards", icon: Gift },
   { href: "/admin/secciones", label: "Landing", icon: LayoutPanelLeft },
   { href: "/admin/faq", label: "FAQ", icon: HelpCircle },
   { href: "/admin/sucursales", label: "Sucursales", icon: Building2 },
