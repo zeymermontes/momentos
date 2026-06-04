@@ -163,6 +163,7 @@ export function GenerateSheets({ projectId, sizeCm, pages, userId, title, coverI
 
       const coverBlob = await renderCoverSheet(
         sizeCm,
+        pages.length,
         title,
         coverImg,
         coverCrop,
@@ -490,6 +491,7 @@ function drawBookPage(
 
 async function renderCoverSheet(
   sizeCm: number,
+  pageCount: number,
   title: string,
   coverImg: HTMLImageElement | null,
   coverCrop: CropState,
@@ -505,7 +507,13 @@ async function renderCoverSheet(
   ctx.fillRect(0, 0, SHEET_W_PX, SHEET_H_PX);
 
   const pagePx = Math.round((sizeCm / 2.54) * PRINT_DPI);
-  const spinePx = Math.round((1 / 2.54) * PRINT_DPI); // 1 cm spine
+  // Thin books (< 65 pages) get a 0.5 cm spine; thicker books need 1 cm so
+  // the rotated title fits comfortably and the fold has enough material.
+  const spineCm = pageCount < 65 ? 0.5 : 1;
+  const spinePx = Math.round((spineCm / 2.54) * PRINT_DPI);
+  // 0.5 cm in pixels, used to inset the cover image, shift it toward the
+  // spine, and nudge the title higher.
+  const halfCmPx = Math.round((0.5 / 2.54) * PRINT_DPI);
   const layoutW = pagePx + spinePx + pagePx;
   const layoutH = pagePx;
 
@@ -574,8 +582,16 @@ async function renderCoverSheet(
   }
 
   // --- Cover (right): user image with crop ---
+  // The visible cover is 0.5 cm smaller on each side (so 1 cm narrower /
+  // shorter overall) AND shifted 0.5 cm toward the spine. The 0.5 cm
+  // top/bottom/far-side insets cancel naturally with the 0.5 cm leftward
+  // shift, leaving the spine-side edge sitting on the spine boundary.
+  const coverDrawPx = pagePx - 2 * halfCmPx;
+  const coverDrawX = coverXOff; // = (coverXOff + halfCmPx) - halfCmPx
+  const coverDrawY = halfCmPx;
+
   if (coverImg) {
-    drawBookPage(offCtx, coverImg, coverCrop, coverXOff, 0, pagePx);
+    drawBookPage(offCtx, coverImg, coverCrop, coverDrawX, coverDrawY, coverDrawPx);
 
     if (title) {
       offCtx.save();
@@ -584,7 +600,13 @@ async function renderCoverSheet(
       offCtx.font = `600 ${Math.round(margin * 0.4)}px sans-serif`;
       offCtx.textAlign = "center";
       offCtx.textBaseline = "middle";
-      offCtx.fillText(title, coverXOff + pagePx / 2, layoutH - margin / 2);
+      // Centered horizontally under the shifted cover and 0.5 cm above
+      // the original baseline so the title doesn't crowd the bottom edge.
+      offCtx.fillText(
+        title,
+        coverDrawX + coverDrawPx / 2,
+        layoutH - margin / 2 - halfCmPx,
+      );
       offCtx.restore();
     }
   }

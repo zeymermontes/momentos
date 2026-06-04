@@ -26,6 +26,20 @@ const RecoverSchema = z.object({
   email: z.string().email("Correo inválido"),
 });
 
+const UpdatePasswordSchema = z
+  .object({
+    password: z
+      .string()
+      .min(8, "Mínimo 8 caracteres")
+      .regex(/[a-zA-Z]/, "Debe incluir al menos una letra")
+      .regex(/[0-9]/, "Debe incluir al menos un número"),
+    confirm: z.string(),
+  })
+  .refine((d) => d.password === d.confirm, {
+    message: "Las contraseñas no coinciden",
+    path: ["confirm"],
+  });
+
 export type AuthState = {
   errors?: Record<string, string[] | undefined>;
   message?: string;
@@ -100,7 +114,12 @@ export async function recoverAction(
   const supabase = await createClient();
   const { error } = await supabase.auth.resetPasswordForEmail(
     parsed.data.email,
-    { redirectTo: `${env.SITE_URL}/auth/callback?next=/mi-cuenta/perfil` },
+    {
+      // After Supabase exchanges the OTP, /auth/callback redirects here.
+      // The page renders a "set new password" form and the action below
+      // commits the change.
+      redirectTo: `${env.SITE_URL}/auth/callback?next=/restablecer-contrasena`,
+    },
   );
   if (error) return { message: error.message };
 
@@ -108,6 +127,37 @@ export async function recoverAction(
     ok: true,
     message: "Si la cuenta existe, te enviamos un correo con instrucciones.",
   };
+}
+
+export async function updatePasswordAction(
+  _prev: AuthState | undefined,
+  formData: FormData,
+): Promise<AuthState> {
+  const parsed = UpdatePasswordSchema.safeParse({
+    password: formData.get("password"),
+    confirm: formData.get("confirm"),
+  });
+  if (!parsed.success) {
+    return { errors: z.flattenError(parsed.error).fieldErrors };
+  }
+
+  const supabase = await createClient();
+  // Recovery session is short-lived; if there's no user, the OTP already
+  // expired or the user never clicked the email link.
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return {
+      message: "Tu sesión expiró. Pide un nuevo link de recuperación.",
+    };
+  }
+
+  const { error } = await supabase.auth.updateUser({
+    password: parsed.data.password,
+  });
+  if (error) return { message: error.message };
+
+  revalidatePath("/", "layout");
+  redirect("/mi-cuenta?password_updated=1");
 }
 
 export async function signOutAction() {
