@@ -7,6 +7,14 @@ const inter = Inter({
   subsets: ["latin"],
 });
 
+// Normalize NEXT_PUBLIC_SITE_URL so a missing protocol (e.g.
+// "momentosbooks.com") doesn't crash `new URL()` during build.
+function siteUrlBase(): string {
+  const raw = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (!raw) return "http://localhost:3000";
+  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+}
+
 export const metadata: Metadata = {
   title: {
     default: "Momentos",
@@ -14,9 +22,7 @@ export const metadata: Metadata = {
   },
   description:
     "Tu tienda en línea de momentos especiales. Encuentra productos únicos, personaliza y recibe en tu domicilio.",
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
-  ),
+  metadataBase: new URL(siteUrlBase()),
 };
 
 export default function RootLayout({

@@ -5,6 +5,14 @@ function required(name: string, value: string | undefined): string {
   return value;
 }
 
+// Normalize the site URL: prepend https:// if the env var is set without a
+// protocol so downstream `new URL()` consumers don't throw ERR_INVALID_URL.
+function normalizeSiteUrl(raw: string | undefined): string {
+  const trimmed = raw?.trim();
+  if (!trimmed) return "http://localhost:3000";
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
 export const env = {
   SUPABASE_URL: required(
     "NEXT_PUBLIC_SUPABASE_URL",
@@ -14,7 +22,7 @@ export const env = {
     "NEXT_PUBLIC_SUPABASE_ANON_KEY",
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   ),
-  SITE_URL: process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
+  SITE_URL: normalizeSiteUrl(process.env.NEXT_PUBLIC_SITE_URL),
   MERCADOPAGO_PUBLIC_KEY: process.env.NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY ?? "",
 };
 
