@@ -106,7 +106,8 @@ export async function updateOrderStatusAction(
     // reads the *current* status, but we already updated it — pass the
     // previous status via a quick admin-side fetch is overkill, so just
     // insert directly here.
-    if (previousStatus !== parsed.data.status) {
+    const realTransition = previousStatus !== parsed.data.status;
+    if (realTransition) {
       await supabase.from("order_status_history").insert({
         order_id: orderId,
         from_status: previousStatus,
@@ -129,6 +130,29 @@ export async function updateOrderStatusAction(
         await issueGiftCardsForPaidOrder(orderId);
       } catch (e) {
         console.error("[admin/pedidos] issuance failed:", e);
+      }
+    }
+
+    // Customer notifications. Only on real transitions so re-saving the same
+    // status doesn't spam the inbox. notifyOrderPaid stays within
+    // becomingPaid only (other paths fire that one too).
+    if (realTransition) {
+      const newStatus = parsed.data.status;
+      try {
+        const {
+          notifyOrderPaid,
+          notifyOrderShipped,
+          notifyOrderReady,
+        } = await import("@/lib/order-notifications");
+        if (newStatus === "paid" && becomingPaid) {
+          await notifyOrderPaid(orderId);
+        } else if (newStatus === "shipped") {
+          await notifyOrderShipped(orderId);
+        } else if (newStatus === "ready") {
+          await notifyOrderReady(orderId);
+        }
+      } catch (e) {
+        console.error("[admin/pedidos] notification failed:", e);
       }
     }
 

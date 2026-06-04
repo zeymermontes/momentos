@@ -83,6 +83,16 @@ export default async function CheckoutSuccessPage({
           changed_by_user_id: null,
           source: "checkout_success",
         });
+        if (nextStatus === "paid") {
+          try {
+            const { notifyOrderPaid } = await import(
+              "@/lib/order-notifications"
+            );
+            await notifyOrderPaid(order.id);
+          } catch (err) {
+            console.error("[checkout/success] notifyOrderPaid failed:", err);
+          }
+        }
       }
       // Clear the user's cart on approval.
       if (payment.status === "approved") {

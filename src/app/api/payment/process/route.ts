@@ -135,6 +135,14 @@ export async function POST(req: NextRequest) {
       changed_by_user_id: null,
       source: "mp_process",
     });
+    if (newStatus === "paid") {
+      try {
+        const { notifyOrderPaid } = await import("@/lib/order-notifications");
+        await notifyOrderPaid(orderId);
+      } catch (e) {
+        console.error("[payment/process] notifyOrderPaid failed:", e);
+      }
+    }
   }
 
   if (mpResult.status === "approved") {

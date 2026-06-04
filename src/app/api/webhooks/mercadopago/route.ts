@@ -144,6 +144,16 @@ export async function POST(req: NextRequest) {
       changed_by_user_id: null,
       source: "mp_webhook",
     });
+    // Send the customer notification only on a real transition so retries
+    // don't double-mail.
+    if (newOrderStatus === "paid") {
+      try {
+        const { notifyOrderPaid } = await import("@/lib/order-notifications");
+        await notifyOrderPaid(String(orderId));
+      } catch (e) {
+        console.error("[mp/webhook] notifyOrderPaid failed:", e);
+      }
+    }
   }
 
   // On approval: (1) redeem any gift card the customer reserved at checkout
