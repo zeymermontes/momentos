@@ -18,9 +18,10 @@ type Props = {
   projectId: string;
   page: PhotobookPage;
   userId: string;
+  sizeCm: number;
 };
 
-export function PageEditor({ projectId, page, userId }: Props) {
+export function PageEditor({ projectId, page, userId, sizeCm }: Props) {
   const router = useRouter();
   const [crop, setCrop] = useState<CropState>(page.crop);
   const [imageUrl, setImageUrl] = useState(page.image_url ?? "");
@@ -93,6 +94,7 @@ export function PageEditor({ projectId, page, userId }: Props) {
               imgHeight={imgDims.height}
               crop={crop}
               onChange={setCrop}
+              pageSizeCm={sizeCm}
             />
             {uploading && (
               <div className="absolute inset-0 z-30 grid place-items-center bg-white/70">

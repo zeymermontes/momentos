@@ -87,6 +87,7 @@ export function CoverEditor({ project, coverUrl, userId }: Props) {
               crop={crop}
               onChange={setCrop}
               titleOverlay={title || "Tu título aquí"}
+              pageSizeCm={project.size_cm}
             />
             {uploading && (
               <div className="absolute inset-0 z-40 grid place-items-center bg-white/70">

@@ -1,7 +1,8 @@
-// 3000 px covers the largest photobook (30 cm × 80% content area = 24 cm,
-// which needs ~2835 px at 300 DPI). Bigger sources just waste upload
-// bandwidth on mobile without adding print fidelity.
-const MAX_DIMENSION = 3000;
+// 6000 px lets the Xerox C70 production printer hit its sweet spot of
+// ~600 PPI source on the largest fotolibros (30 cm × 80% content area
+// = 24 cm needs 5670 px at 600 PPI). Smaller phones still upload fast
+// since they're shrunk to their own native resolution, not padded up.
+const MAX_DIMENSION = 6000;
 const THUMB_DIMENSION = 400;
 // WebP at 0.82 looks indistinguishable from JPEG at 0.92 in print and
 // uploads ~50% smaller than the old JPEG 0.85 — the biggest single win
