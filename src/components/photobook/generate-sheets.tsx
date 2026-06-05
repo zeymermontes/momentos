@@ -18,6 +18,17 @@ import { savePrintSheetsAction } from "@/app/(storefront)/fotolibro/actions";
 const REF = 400;
 const REF_CONTENT = REF * 0.8;
 
+// 0.98 JPEG keeps the chroma close to the source after the canvas
+// compositing pass. 0.95 worked but introduced subtle muting on skin /
+// foliage tones; the extra ~15-20% file size on a 3900×5700 sheet is
+// fine since printer-side download isn't the bottleneck.
+const SHEET_JPEG_QUALITY = 0.98;
+// Render the sheets in the wider Display P3 gamut to match what iPhones
+// captured and what our optimized WebPs preserve. Without this the
+// canvas clamps to sRGB and the C70 sees pre-muted colors regardless of
+// how clean the source was.
+const SHEET_COLOR_SPACE: PredefinedColorSpace = "display-p3";
+
 type Props = {
   projectId: string;
   sizeCm: number;
@@ -344,7 +355,7 @@ async function renderSheet(
   const canvas = document.createElement("canvas");
   canvas.width = SHEET_W_PX;
   canvas.height = SHEET_H_PX;
-  const ctx = canvas.getContext("2d")!;
+  const ctx = canvas.getContext("2d", { colorSpace: SHEET_COLOR_SPACE })!;
 
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, SHEET_W_PX, SHEET_H_PX);
@@ -377,7 +388,7 @@ async function renderSheet(
       canvas.toBlob(
         (blob) => (blob ? resolve(blob) : reject(new Error("Canvas toBlob failed"))),
         "image/jpeg",
-        0.95,
+        SHEET_JPEG_QUALITY,
       );
     });
   }
@@ -440,7 +451,7 @@ async function renderSheet(
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error("Canvas toBlob failed"))),
       "image/jpeg",
-      0.95,
+      SHEET_JPEG_QUALITY,
     );
   });
 }
@@ -500,7 +511,7 @@ async function renderCoverSheet(
   const canvas = document.createElement("canvas");
   canvas.width = SHEET_W_PX;
   canvas.height = SHEET_H_PX;
-  const ctx = canvas.getContext("2d")!;
+  const ctx = canvas.getContext("2d", { colorSpace: SHEET_COLOR_SPACE })!;
 
   // White background
   ctx.fillStyle = "#ffffff";
@@ -530,7 +541,7 @@ async function renderCoverSheet(
   const off = document.createElement("canvas");
   off.width = layoutW;
   off.height = layoutH;
-  const offCtx = off.getContext("2d")!;
+  const offCtx = off.getContext("2d", { colorSpace: SHEET_COLOR_SPACE })!;
 
   // White layout background
   offCtx.fillStyle = "#ffffff";
@@ -644,7 +655,7 @@ async function renderCoverSheet(
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error("Canvas toBlob failed"))),
       "image/jpeg",
-      0.95,
+      SHEET_JPEG_QUALITY,
     );
   });
 }
