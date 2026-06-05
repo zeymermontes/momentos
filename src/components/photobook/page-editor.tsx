@@ -42,13 +42,14 @@ export function PageEditor({ projectId, page, userId }: Props) {
   async function handleUpload(file: File) {
     setUploading(true);
     try {
-      const { full, thumb } = await optimizeImage(file);
+      const { full, fullContentType, fullExtension, thumb } = await optimizeImage(file);
       const supabase = createClient();
       const ts = Date.now();
-      const fullPath = `${userId}/photobooks/${projectId}/pages/${String(page.sort_order).padStart(3, "0")}_${ts}.webp`;
-      const tPath = `${userId}/photobooks/${projectId}/pages/${String(page.sort_order).padStart(3, "0")}_${ts}_thumb.webp`;
+      const base = `${userId}/photobooks/${projectId}/pages/${String(page.sort_order).padStart(3, "0")}_${ts}`;
+      const fullPath = `${base}.${fullExtension}`;
+      const tPath = `${base}_thumb.webp`;
       const [{ error: e1 }, { error: e2 }] = await Promise.all([
-        supabase.storage.from("customer-uploads").upload(fullPath, full, { contentType: "image/webp" }),
+        supabase.storage.from("customer-uploads").upload(fullPath, full, { contentType: fullContentType }),
         supabase.storage.from("customer-uploads").upload(tPath, thumb, { contentType: "image/webp" }),
       ]);
       if (e1) throw e1;

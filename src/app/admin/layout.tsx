@@ -21,6 +21,7 @@ import { MomentosLogo } from "@/components/momentos-logo";
 import { AdminMobileNav } from "@/app/admin/_components/admin-mobile-nav";
 import { createClient } from "@/lib/supabase/server";
 import { signOutAction } from "@/app/(auth)/actions";
+import { APP_VERSION } from "@/lib/version";
 
 const navItems = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
@@ -91,6 +92,9 @@ export default async function AdminLayout({
             Cerrar sesión
           </button>
         </form>
+        <div className="border-t border-secondary-foreground/10 px-4 py-2 text-[10px] uppercase tracking-wider text-secondary-foreground/50">
+          v{APP_VERSION}
+        </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -104,13 +108,18 @@ export default async function AdminLayout({
               </span>
             </h1>
           </div>
-          <Link
-            href="/"
-            className="shrink-0 text-sm font-medium text-muted-foreground hover:text-foreground"
-          >
-            <span className="hidden sm:inline">Ver tienda →</span>
-            <span className="sm:hidden">Tienda →</span>
-          </Link>
+          <div className="flex shrink-0 items-center gap-3">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground/70">
+              v{APP_VERSION}
+            </span>
+            <Link
+              href="/"
+              className="text-sm font-medium text-muted-foreground hover:text-foreground"
+            >
+              <span className="hidden sm:inline">Ver tienda →</span>
+              <span className="sm:hidden">Tienda →</span>
+            </Link>
+          </div>
         </header>
         <main className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-6">
           {children}
