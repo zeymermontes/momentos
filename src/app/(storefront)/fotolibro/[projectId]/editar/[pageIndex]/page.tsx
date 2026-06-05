@@ -34,7 +34,7 @@ export default async function EditPagePage({
         <ArrowLeft className="h-4 w-4" />
         Volver a páginas
       </Link>
-      <PageEditor projectId={projectId} page={page} userId={user.id} sizeCm={project.size_cm} />
+      <PageEditor projectId={projectId} page={page} userId={user.id} />
     </div>
   );
 }

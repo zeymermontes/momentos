@@ -16,24 +16,11 @@ type Props = {
   crop: CropState;
   onChange: (crop: CropState) => void;
   titleOverlay?: string;
-  /**
-   * Physical page size in cm. When provided, the cropper enforces a max
-   * zoom that keeps the printed crop at or above DPI_FLOOR (PPI shown in
-   * the live badge), and the badge is rendered in the corner.
-   */
-  pageSizeCm?: number;
 };
 
 const PAN_DAMPING = 0.45;
 const ZOOM_FACTOR = 1.04;
 const MIN_SCALE = 0.01;
-
-// Print quality thresholds. The Xerox C70 prints best at ~600 PPI source;
-// 300 PPI is the industry standard floor for photo quality. Below 200
-// PPI prints look visibly soft.
-const PPI_EXCELLENT = 600;
-const PPI_GOOD = 300;
-const DPI_FLOOR = 200; // we don't let the user zoom past this
 
 const REF = 400;
 const REF_CONTENT = REF * 0.8;
@@ -46,7 +33,6 @@ export function ImageCropper({
   crop,
   onChange,
   titleOverlay,
-  pageSizeCm,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
@@ -70,19 +56,6 @@ export function ImageCropper({
 
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
-
-  // Quality math: base PPI assumes the source image is "contain"-fit into
-  // the print content area (sizeCm × 0.8). Effective PPI scales inversely
-  // with crop.scale because zooming uses fewer source pixels per inch of
-  // print. maxScale clamps zoom so the print stays at >= DPI_FLOOR.
-  const longSide = Math.max(imgWidth, imgHeight);
-  const contentInches = pageSizeCm
-    ? (pageSizeCm * 0.8) / 2.54
-    : null;
-  const basePpi = contentInches ? longSide / contentInches : null;
-  const maxScale =
-    basePpi && basePpi > 0 ? Math.max(MIN_SCALE, basePpi / DPI_FLOOR) : null;
-  const currentPpi = basePpi ? basePpi / Math.max(crop.scale, MIN_SCALE) : null;
 
   useEffect(() => {
     const el = containerRef.current;
@@ -141,10 +114,7 @@ export function ImageCropper({
       const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
       if (dist === 0) return;
       const start = pinchStart.current;
-      const proposed = start.scale * (dist / start.dist);
-      const newScale = maxScale
-        ? Math.min(maxScale, Math.max(MIN_SCALE, proposed))
-        : Math.max(MIN_SCALE, proposed);
+      const newScale = Math.max(MIN_SCALE, start.scale * (dist / start.dist));
       const ratio = newScale / start.scale;
 
       const el = containerRef.current;
@@ -200,11 +170,6 @@ export function ImageCropper({
   // --- Wheel (zoom toward cursor) ---
   const scaleRef = useRef(scaleRatio);
   scaleRef.current = scaleRatio;
-  // Keep the latest maxScale accessible from the wheel handler (which
-  // is bound inside an empty-deps useEffect to avoid re-listening on
-  // every render).
-  const maxScaleRef = useRef(maxScale);
-  maxScaleRef.current = maxScale;
 
   useEffect(() => {
     const el = containerRef.current;
@@ -217,11 +182,7 @@ export function ImageCropper({
       const c = live.current;
       const sr = scaleRef.current;
       const factor = e.deltaY > 0 ? (1 / ZOOM_FACTOR) : ZOOM_FACTOR;
-      const cap = maxScaleRef.current;
-      const proposed = c.scale * factor;
-      const newScale = cap
-        ? Math.min(cap, Math.max(MIN_SCALE, proposed))
-        : Math.max(MIN_SCALE, proposed);
+      const newScale = Math.max(MIN_SCALE, c.scale * factor);
 
       const ratio = newScale / c.scale;
       const rect = el!.getBoundingClientRect();
@@ -342,10 +303,6 @@ export function ImageCropper({
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerUp}
         />
-
-        {/* Live DPI badge — only when the caller passed pageSizeCm so we
-            can compute meaningful values. */}
-        {currentPpi != null ? <DpiBadge ppi={currentPpi} /> : null}
       </div>
 
       {/* Toolbar */}
@@ -359,46 +316,6 @@ export function ImageCropper({
           Rotar 90°
         </button>
       </div>
-    </div>
-  );
-}
-
-/**
- * Live quality readout — color-codes the effective print PPI so the
- * user can tell whether their current crop is going to print sharp or
- * soft before they commit.
- */
-function DpiBadge({ ppi }: { ppi: number }) {
-  const tier =
-    ppi >= PPI_EXCELLENT
-      ? {
-          label: "Calidad máxima",
-          bg: "bg-emerald-600",
-          text: "text-white",
-        }
-      : ppi >= PPI_GOOD
-        ? {
-            label: "Buena calidad",
-            bg: "bg-emerald-500",
-            text: "text-white",
-          }
-        : ppi >= DPI_FLOOR
-          ? {
-              label: "Calidad reducida",
-              bg: "bg-amber-500",
-              text: "text-white",
-            }
-          : {
-              label: "Va a salir borroso",
-              bg: "bg-red-500",
-              text: "text-white",
-            };
-  return (
-    <div
-      className={`pointer-events-none absolute right-3 top-3 z-40 rounded-md px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${tier.bg} ${tier.text}`}
-      title={`Resolución efectiva al imprimir: ${Math.round(ppi)} PPI`}
-    >
-      {Math.round(ppi)} PPI · {tier.label}
     </div>
   );
 }
