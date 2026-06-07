@@ -163,36 +163,38 @@ export function CustomizerForm({
           </div>
         ) : null}
 
-        <fieldset className="space-y-4 rounded-md border border-border bg-card p-4">
-          <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Personaliza tu diseño
-          </legend>
+        {activeFields.length > 0 ? (
+          <fieldset className="space-y-4 rounded-md border border-border bg-card p-4">
+            <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Personaliza tu diseño
+            </legend>
 
-          {activeFields.map((field) => (
-            <FieldInput
-              key={field.id}
-              field={field}
-              value={values[field.name] ?? ""}
-              uploadUrl={uploads[field.name]}
-              uploading={uploadingField === field.name}
-              onChange={(v) => setValues((prev) => ({ ...prev, [field.name]: v }))}
-              onUpload={(file) => handleFileUpload(field.name, file)}
-              onClearUpload={() =>
-                setUploads((prev) => {
-                  const next = { ...prev };
-                  delete next[field.name];
-                  return next;
-                })
-              }
-            />
-          ))}
+            {activeFields.map((field) => (
+              <FieldInput
+                key={field.id}
+                field={field}
+                value={values[field.name] ?? ""}
+                uploadUrl={uploads[field.name]}
+                uploading={uploadingField === field.name}
+                onChange={(v) => setValues((prev) => ({ ...prev, [field.name]: v }))}
+                onUpload={(file) => handleFileUpload(field.name, file)}
+                onClearUpload={() =>
+                  setUploads((prev) => {
+                    const next = { ...prev };
+                    delete next[field.name];
+                    return next;
+                  })
+                }
+              />
+            ))}
 
-          {uploadError ? (
-            <p className="rounded-md bg-destructive/10 p-2 text-xs text-destructive">
-              {uploadError}
-            </p>
-          ) : null}
-        </fieldset>
+            {uploadError ? (
+              <p className="rounded-md bg-destructive/10 p-2 text-xs text-destructive">
+                {uploadError}
+              </p>
+            ) : null}
+          </fieldset>
+        ) : null}
 
         <div className="space-y-2">
           <Label htmlFor="quantity">Cantidad</Label>
