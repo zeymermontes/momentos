@@ -302,6 +302,7 @@ const CustomFieldSchema = z.object({
   required: z.coerce.boolean().optional(),
   options: z.array(z.string()).default([]),
   price_delta_rules: z.record(z.string(), z.coerce.number()).optional().nullable(),
+  visible_variant_ids: z.array(z.string().uuid()).default([]),
 });
 
 export type CustomFieldActionState = {
@@ -335,6 +336,17 @@ function parsePriceRules(
   return anySet ? out : null;
 }
 
+function parseVariantIds(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw.filter((v): v is string => typeof v === "string");
+  }
+  if (typeof raw !== "string" || !raw.trim()) return [];
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 export async function addCustomizationFieldAction(
   productId: string,
   _prev: CustomFieldActionState | undefined,
@@ -350,6 +362,7 @@ export async function addCustomizationFieldAction(
       required: formData.get("required") === "on",
       options,
       price_delta_rules: parsePriceRules(options, formData),
+      visible_variant_ids: parseVariantIds(formData.get("visible_variant_ids")),
     });
     if (!parsed.success) {
       return { errors: z.flattenError(parsed.error).fieldErrors };
@@ -365,6 +378,7 @@ export async function addCustomizationFieldAction(
       options:
         parsed.data.type === "dropdown" ? parsed.data.options : null,
       price_delta_rules: parsed.data.price_delta_rules ?? null,
+      visible_variant_ids: parsed.data.visible_variant_ids,
     });
     if (error) return { message: error.message };
 
@@ -372,6 +386,31 @@ export async function addCustomizationFieldAction(
     revalidatePath(`/admin/productos/${productId}/personalizacion`);
     return {};
   });
+}
+
+export async function updateCustomizationFieldVisibilityAction(
+  productId: string,
+  fieldId: string,
+  variantIds: string[],
+): Promise<{ ok: boolean; message?: string }> {
+  // Drop anything that isn't a uuid-shaped string so we never persist
+  // junk that snuck in from a tampered form post.
+  const cleanIds = variantIds.filter(
+    (v) =>
+      typeof v === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v),
+  );
+  const { supabase } = await requireAdmin();
+  const { error } = await supabase
+    .from("customization_fields")
+    .update({ visible_variant_ids: cleanIds })
+    .eq("id", fieldId)
+    .eq("product_id", productId);
+  if (error) return { ok: false, message: error.message };
+
+  revalidatePath(`/admin/productos/${productId}`);
+  revalidatePath(`/admin/productos/${productId}/personalizacion`);
+  return { ok: true };
 }
 
 export async function deleteCustomizationFieldAction(

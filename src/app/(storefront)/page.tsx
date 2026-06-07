@@ -1,6 +1,6 @@
 import { Fragment } from "react";
 import Link from "next/link";
-import { ArrowRight, Sparkles, Store, Truck, Upload } from "lucide-react";
+import { ArrowRight, BookOpen, Check, Sparkles, Store, Truck, Upload } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn, formatMXN } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/server";
@@ -275,6 +275,8 @@ function renderSection(section: SectionRow, data: PreloadedData) {
       );
     case "cta_band":
       return <CtaBand config={section.config} />;
+    case "photobook_cta":
+      return <PhotobookCta config={section.config} title={section.title} />;
     case "carousel": {
       const slides = data.carouselsBySection.get(section.id) ?? [];
       if (slides.length === 0) return null;
@@ -652,6 +654,130 @@ function CustomHtml({ html }: { html: string }) {
  * Pass an empty `config` object for the legacy hardcoded render at the
  * bottom of the landing.
  */
+/**
+ * Photobook-specific landing block. Shows a hero-style two-column section
+ * promoting the fotolibro flow: title + subtitle on one side, image on the
+ * other, optional starting price, optional 3-feature checklist, and a CTA
+ * button (defaults to `/fotolibro`).
+ *
+ * Falls back to a pink-gradient placeholder when the admin hasn't uploaded
+ * an image. The image_position config flips left/right.
+ */
+function PhotobookCta({
+  config,
+  title: rowTitle,
+}: {
+  config: Record<string, unknown>;
+  title: string | null;
+}) {
+  const str = (k: string): string | undefined => {
+    const v = config[k];
+    return typeof v === "string" && v.trim() ? v : undefined;
+  };
+  const num = (k: string): number | null => {
+    const v = config[k];
+    if (typeof v === "number" && Number.isFinite(v) && v > 0) return v;
+    return null;
+  };
+
+  const title =
+    str("title") ?? rowTitle ?? "Crea tu fotolibro personalizado";
+  const subtitle =
+    str("subtitle") ??
+    "Diseña en línea con preview en vivo, elige tu tamaño y recibe tu libro impreso en alta calidad.";
+  const imageUrl = str("image_url");
+  const startingPrice = num("starting_price");
+  const buttonLabel = str("button_label") ?? "Empezar mi fotolibro";
+  const buttonHref = str("button_href") ?? "/fotolibro";
+  const imagePosition = config.image_position === "left" ? "left" : "right";
+  const features = Array.isArray(config.features)
+    ? (config.features as unknown[]).filter(
+        (f): f is string => typeof f === "string" && f.trim().length > 0,
+      )
+    : [];
+
+  const textCol = (
+    <div className="space-y-6">
+      <div className="inline-flex items-center gap-2 rounded-full bg-primary/15 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary">
+        <BookOpen className="h-3.5 w-3.5" />
+        Fotolibros
+      </div>
+      <div className="space-y-3">
+        <h2 className="text-3xl font-black tracking-tight sm:text-4xl">
+          {title}
+        </h2>
+        <p className="max-w-xl text-base text-muted-foreground sm:text-lg">
+          {subtitle}
+        </p>
+      </div>
+      {features.length > 0 ? (
+        <ul className="space-y-2">
+          {features.map((f) => (
+            <li key={f} className="flex items-start gap-2 text-sm">
+              <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <span>{f}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
+        {startingPrice !== null ? (
+          <div>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+              Desde
+            </p>
+            <p className="text-2xl font-bold">{formatMXN(startingPrice)}</p>
+          </div>
+        ) : null}
+        {buttonLabel ? (
+          <Link
+            href={buttonHref}
+            className={cn(buttonVariants({ size: "lg" }), "gap-2")}
+          >
+            {buttonLabel}
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        ) : null}
+      </div>
+    </div>
+  );
+
+  const imageCol = (
+    <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-primary/10 ring-1 ring-primary/20">
+      {imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={imageUrl}
+          alt={title}
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        <div className="grid h-full w-full place-items-center bg-gradient-to-br from-primary/30 to-primary text-primary-foreground">
+          <BookOpen className="h-24 w-24 opacity-90" />
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <section className="bg-background py-16">
+      <div className="mx-auto grid w-full max-w-7xl items-center gap-10 px-4 sm:px-6 lg:grid-cols-2 lg:px-8">
+        {imagePosition === "left" ? (
+          <>
+            {imageCol}
+            {textCol}
+          </>
+        ) : (
+          <>
+            {textCol}
+            {imageCol}
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function CtaBand({ config }: { config: Record<string, unknown> }) {
   const str = (k: string): string | undefined => {
     const v = config[k];

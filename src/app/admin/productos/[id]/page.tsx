@@ -118,6 +118,7 @@ export default async function EditProductPage({
               <CustomizationFieldsSection
                 productId={product.id}
                 fields={customFields ?? []}
+                variants={(variants ?? []).map((v) => ({ id: v.id, name: v.name }))}
               />
             </CardContent>
           </Card>

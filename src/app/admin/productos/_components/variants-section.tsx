@@ -15,6 +15,7 @@ import {
   closestCenter,
   KeyboardSensor,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -66,8 +67,14 @@ export function VariantsSection({
     setItems(variants);
   }
 
+  // On mobile, browsers consume touch events for scrolling unless we
+  // require a short hold first. TouchSensor with delay:150 lets normal
+  // scrolling work but kicks in for a deliberate drag-and-hold.
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 150, tolerance: 8 },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     }),
@@ -93,7 +100,7 @@ export function VariantsSection({
     <div className="space-y-4">
       {items.length > 0 ? (
         <div className="overflow-hidden rounded-md border border-border">
-          <div className="grid grid-cols-[2rem_2fr_1fr_1fr_1fr_5rem] items-center gap-3 border-b border-border bg-muted/40 px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <div className="hidden grid-cols-[2rem_2fr_1fr_1fr_1fr_5rem] items-center gap-3 border-b border-border bg-muted/40 px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground sm:grid">
             <span />
             <span>Nombre</span>
             <span>Δ Precio</span>
@@ -173,7 +180,7 @@ function SortableVariantRow({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "grid grid-cols-[2rem_2fr_1fr_1fr_1fr_5rem] items-center gap-3 px-3 py-2 hover:bg-muted/20",
+        "flex items-center gap-2 px-3 py-2 hover:bg-muted/20 sm:grid sm:grid-cols-[2rem_2fr_1fr_1fr_1fr_5rem] sm:gap-3",
         isDragging && "z-10 bg-background shadow-lg",
       )}
     >
@@ -182,25 +189,45 @@ function SortableVariantRow({
         aria-label="Reordenar"
         {...attributes}
         {...listeners}
-        className="inline-flex h-8 w-8 cursor-grab items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground active:cursor-grabbing"
+        // `touch-action: none` is REQUIRED so the browser yields touch
+        // events to dnd-kit instead of consuming them for page scroll.
+        // Without it the drag never starts on mobile.
+        style={{ touchAction: "none" }}
+        className="inline-flex h-9 w-9 shrink-0 cursor-grab items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground active:cursor-grabbing"
       >
         <GripVertical className="h-4 w-4" />
       </button>
-      <span className="truncate text-sm font-medium">{variant.name}</span>
-      <span className="text-sm">
+
+      {/* Mobile: stacked column with all metadata */}
+      <div className="min-w-0 flex-1 sm:hidden">
+        <p className="truncate text-sm font-medium">{variant.name}</p>
+        <p className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
+          <span>
+            {Number(variant.price_delta) > 0 ? "+" : ""}
+            {formatMXN(Number(variant.price_delta))}
+          </span>
+          {variant.sku ? <span className="font-mono">{variant.sku}</span> : null}
+          <span>Stock: {variant.stock ?? "∞"}</span>
+        </p>
+      </div>
+
+      {/* Desktop: columnar layout shown only on sm+ */}
+      <span className="hidden truncate text-sm font-medium sm:block">{variant.name}</span>
+      <span className="hidden text-sm sm:block">
         {Number(variant.price_delta) > 0 ? "+" : ""}
         {formatMXN(Number(variant.price_delta))}
       </span>
-      <span className="truncate font-mono text-xs text-muted-foreground">
+      <span className="hidden truncate font-mono text-xs text-muted-foreground sm:block">
         {variant.sku ?? "—"}
       </span>
-      <span className="text-sm">{variant.stock ?? "∞"}</span>
-      <div className="flex items-center justify-end gap-0.5">
+      <span className="hidden text-sm sm:block">{variant.stock ?? "∞"}</span>
+
+      <div className="flex shrink-0 items-center justify-end gap-0.5">
         <button
           type="button"
           onClick={() => setEditing(true)}
           aria-label="Editar"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-foreground hover:bg-muted"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-md text-foreground hover:bg-muted"
         >
           <Pencil className="h-3.5 w-3.5" />
         </button>

@@ -21,7 +21,8 @@ export type SectionType =
   | "banner_strip"
   | "custom_html"
   | "cta_band"
-  | "carousel";
+  | "carousel"
+  | "photobook_cta";
 
 export const SECTION_TYPE_LABEL: Record<SectionType, string> = {
   hero_banners: "Banners principales (hero)",
@@ -31,6 +32,7 @@ export const SECTION_TYPE_LABEL: Record<SectionType, string> = {
   custom_html: "HTML personalizado",
   cta_band: "Banda de llamado a la acción (CTA)",
   carousel: "Carrusel de banners",
+  photobook_cta: "Bloque de fotolibro",
 };
 
 export type Section = {
@@ -347,6 +349,119 @@ function TypeConfigFields({
         <p className="text-xs text-muted-foreground">
           Auto-rotación en milisegundos (5000 = 5s). Pon 0 para desactivar
           auto-play.
+        </p>
+      </div>
+    );
+  }
+  if (type === "photobook_cta") {
+    return (
+      <div className="space-y-3 rounded-md border border-border bg-muted/30 p-4">
+        <p className="text-xs text-muted-foreground">
+          Bloque dedicado para invitar a crear un fotolibro. Si dejas la imagen
+          vacía se usa un placeholder con el logo. El botón apunta por defecto a{" "}
+          <code>/fotolibro</code>.
+        </p>
+        <div className="grid gap-1.5">
+          <Label htmlFor="pb_title">Título</Label>
+          <Input
+            id="pb_title"
+            name="pb_title"
+            defaultValue={String(initial.title ?? "")}
+            placeholder="Ej. Crea tu fotolibro personalizado"
+          />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="pb_subtitle">Subtítulo</Label>
+          <Textarea
+            id="pb_subtitle"
+            name="pb_subtitle"
+            rows={2}
+            defaultValue={String(initial.subtitle ?? "")}
+            placeholder="Ej. Diseña en línea, previsualiza en vivo y recibe tu libro en casa."
+          />
+        </div>
+        <div className="grid gap-1.5">
+          <Label>Imagen (opcional)</Label>
+          <ImageUpload
+            name="pb_image_url"
+            defaultValue={String(initial.image_url ?? "")}
+            folder="home"
+            hint="Recomendado: 1000×1000 px. Mockup o foto de un fotolibro."
+          />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-1.5">
+            <Label htmlFor="pb_starting_price">Precio desde (MXN)</Label>
+            <Input
+              id="pb_starting_price"
+              name="pb_starting_price"
+              type="number"
+              step="0.01"
+              min={0}
+              defaultValue={
+                initial.starting_price != null ? String(initial.starting_price) : ""
+              }
+              placeholder="349.00"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="pb_image_position">Imagen a la</Label>
+            <Select
+              id="pb_image_position"
+              name="pb_image_position"
+              defaultValue={
+                initial.image_position === "left" ? "left" : "right"
+              }
+            >
+              <option value="right">Derecha</option>
+              <option value="left">Izquierda</option>
+            </Select>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-1.5">
+            <Label htmlFor="pb_button_label">Botón · texto</Label>
+            <Input
+              id="pb_button_label"
+              name="pb_button_label"
+              defaultValue={String(initial.button_label ?? "")}
+              placeholder="Empezar mi fotolibro"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="pb_button_href">Botón · destino</Label>
+            <Input
+              id="pb_button_href"
+              name="pb_button_href"
+              defaultValue={String(initial.button_href ?? "")}
+              placeholder="/fotolibro"
+            />
+          </div>
+        </div>
+        <div className="grid gap-1.5">
+          <Label>Características (hasta 3, opcional)</Label>
+          <div className="space-y-2">
+            {[1, 2, 3].map((n) => (
+              <Input
+                key={n}
+                name={`pb_feature_${n}`}
+                defaultValue={String(
+                  (initial.features as string[] | undefined)?.[n - 1] ?? "",
+                )}
+                placeholder={
+                  n === 1
+                    ? "Ej. Diseña en línea con preview en vivo"
+                    : n === 2
+                      ? "Ej. Tapa dura impresa en alta calidad"
+                      : "Ej. Envío a todo México"
+                }
+              />
+            ))}
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Deja el texto del botón vacío para esconderlo. El precio se muestra
+          como “Desde $X”.
         </p>
       </div>
     );

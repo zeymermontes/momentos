@@ -23,6 +23,12 @@ export type CustomField = {
   required: boolean;
   options: string[] | null;
   price_delta_rules: Record<string, number> | null;
+  /**
+   * Variant IDs this field is visible for. Empty array = always visible
+   * (no variant scoping). Non-empty = only shown when the selected
+   * variant's id is in the list.
+   */
+  visible_variant_ids: string[];
 };
 
 export type Zone = {
@@ -64,6 +70,7 @@ export function parseCustomField(raw: {
   required: boolean;
   options: unknown;
   price_delta_rules: unknown;
+  visible_variant_ids?: unknown;
 }): CustomField {
   return {
     id: raw.id,
@@ -76,7 +83,24 @@ export function parseCustomField(raw: {
       raw.price_delta_rules && typeof raw.price_delta_rules === "object"
         ? (raw.price_delta_rules as Record<string, number>)
         : null,
+    visible_variant_ids: Array.isArray(raw.visible_variant_ids)
+      ? (raw.visible_variant_ids as string[])
+      : [],
   };
+}
+
+/**
+ * Filter fields to those visible for the given variant id. A field with an
+ * empty `visible_variant_ids` array is always visible (no variant scoping).
+ */
+export function visibleFieldsForVariant(
+  fields: CustomField[],
+  variantId: string | null,
+): CustomField[] {
+  return fields.filter((f) => {
+    if (!f.visible_variant_ids.length) return true;
+    return variantId !== null && f.visible_variant_ids.includes(variantId);
+  });
 }
 
 /**

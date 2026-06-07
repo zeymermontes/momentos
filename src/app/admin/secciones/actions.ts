@@ -14,6 +14,7 @@ const SECTION_TYPES = [
   "custom_html",
   "cta_band",
   "carousel",
+  "photobook_cta",
 ] as const;
 
 const SectionSchema = z.object({
@@ -78,6 +79,32 @@ function buildConfig(type: string, formData: FormData): Record<string, unknown> 
         autoplay_ms: Number.isFinite(ms) && ms >= 0 ? ms : 5000,
         show_arrows: formData.get("carousel_show_arrows") === "on",
         show_dots: formData.get("carousel_show_dots") === "on",
+      };
+    }
+    case "photobook_cta": {
+      const str = (key: string) => {
+        const v = String(formData.get(key) ?? "").trim();
+        return v.length > 0 ? v : undefined;
+      };
+      const rawPrice = String(formData.get("pb_starting_price") ?? "").trim();
+      const startingPrice = rawPrice ? Number(rawPrice) : null;
+      const features = [
+        str("pb_feature_1"),
+        str("pb_feature_2"),
+        str("pb_feature_3"),
+      ].filter((s): s is string => Boolean(s));
+      return {
+        title: str("pb_title"),
+        subtitle: str("pb_subtitle"),
+        image_url: str("pb_image_url"),
+        starting_price:
+          startingPrice !== null && Number.isFinite(startingPrice) && startingPrice > 0
+            ? startingPrice
+            : undefined,
+        button_label: str("pb_button_label"),
+        button_href: str("pb_button_href"),
+        image_position: formData.get("pb_image_position") === "left" ? "left" : "right",
+        features,
       };
     }
     default:

@@ -16,6 +16,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import {
   computeCustomizationPriceDelta,
+  visibleFieldsForVariant,
   type CustomField,
   type TemplateConfig,
 } from "@/lib/customization";
@@ -58,20 +59,32 @@ export function CustomizerForm({
 
   const selectedVariant = variants.find((v) => v.id === variantId);
   const variantDelta = selectedVariant ? Number(selectedVariant.price_delta) : 0;
-  const customizationDelta = computeCustomizationPriceDelta(fields, values);
+
+  // Only the fields scoped to the currently selected variant are visible.
+  // Price deltas, required-field validation, and the persisted payload all
+  // derive from this filtered list so hidden fields can never sneak data
+  // into the cart line.
+  const activeFields = visibleFieldsForVariant(fields, variantId || null);
+  const activeFieldNames = new Set(activeFields.map((f) => f.name));
+
+  const customizationDelta = computeCustomizationPriceDelta(activeFields, values);
   const unitPrice = basePrice + variantDelta + customizationDelta;
   const total = unitPrice * quantity;
 
-  // For server action: serialize all values + upload URLs into one JSON object.
+  // For server action: serialize only the visible fields' values + uploads.
   const customizationPayload = {
-    ...values,
     ...Object.fromEntries(
-      Object.entries(uploads).map(([k, v]) => [`${k}__url`, v]),
+      Object.entries(values).filter(([k]) => activeFieldNames.has(k)),
+    ),
+    ...Object.fromEntries(
+      Object.entries(uploads)
+        .filter(([k]) => activeFieldNames.has(k))
+        .map(([k, v]) => [`${k}__url`, v]),
     ),
   };
 
-  // Required validation: all required fields must have a value (or upload).
-  const missingRequired = fields.filter((f) => {
+  // Required validation runs only over the currently visible fields.
+  const missingRequired = activeFields.filter((f) => {
     if (!f.required) return false;
     if (f.type === "file") return !uploads[f.name];
     return !values[f.name] || values[f.name].trim() === "";
@@ -155,7 +168,7 @@ export function CustomizerForm({
             Personaliza tu diseño
           </legend>
 
-          {fields.map((field) => (
+          {activeFields.map((field) => (
             <FieldInput
               key={field.id}
               field={field}
@@ -224,24 +237,19 @@ export function CustomizerForm({
         <AddToCartSubmit disabled={missingRequired.length > 0} />
       </form>
 
-      <div className="space-y-2">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Preview en vivo
-        </p>
-        {template ? (
+      {template ? (
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Preview en vivo
+          </p>
           <CustomizerPreview
             template={template}
-            fields={fields}
+            fields={activeFields}
             values={values}
             uploads={uploads}
           />
-        ) : (
-          <div className="rounded-md border border-dashed border-border bg-muted/30 p-8 text-center text-sm text-muted-foreground">
-            Este producto todavía no tiene plantilla visual configurada. Llena
-            los campos y tu pedido se procesará con esos datos.
-          </div>
-        )}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }

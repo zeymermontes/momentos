@@ -35,7 +35,8 @@ export type HomeSectionType =
   | "banner_strip"
   | "custom_html"
   | "cta_band"
-  | "carousel";
+  | "carousel"
+  | "photobook_cta";
 export type ProductStatus = "draft" | "active" | "archived";
 export type DiscountType = "percent" | "amount" | "free_shipping";
 export type PromotionRuleType =
@@ -220,6 +221,7 @@ export interface Database {
           options: Json | null;
           price_delta_rules: Json | null;
           sort_order: number;
+          visible_variant_ids: Json;
         },
         {
           id?: string;
@@ -231,6 +233,7 @@ export interface Database {
           options?: Json | null;
           price_delta_rules?: Json | null;
           sort_order?: number;
+          visible_variant_ids?: Json;
         }
       >;
       banners: Table<
