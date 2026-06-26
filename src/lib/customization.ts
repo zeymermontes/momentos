@@ -84,7 +84,9 @@ export function parseCustomField(raw: {
         ? (raw.price_delta_rules as Record<string, number>)
         : null,
     visible_variant_ids: Array.isArray(raw.visible_variant_ids)
-      ? (raw.visible_variant_ids as string[])
+      ? (raw.visible_variant_ids as unknown[]).filter(
+          (v): v is string => typeof v === "string",
+        )
       : [],
   };
 }

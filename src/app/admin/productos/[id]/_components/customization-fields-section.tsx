@@ -105,8 +105,14 @@ function FieldRow({
   const [isPending, startTransition] = useTransition();
 
   const isAlwaysVisible = selectedIds.length === 0;
+  // A variant that was deleted after this field was scoped to it will
+  // still show up in selectedIds but not in the variants prop. Drop those
+  // ghosts from the displayed summary so the admin doesn't see a confusing
+  // "Solo en (sin variantes)" line.
+  const liveVariantIds = new Set(variants.map((v) => v.id));
+  const liveSelectedIds = selectedIds.filter((id) => liveVariantIds.has(id));
   const visibleVariantNames = variants
-    .filter((v) => selectedIds.includes(v.id))
+    .filter((v) => liveSelectedIds.includes(v.id))
     .map((v) => v.name);
 
   function toggleVariant(id: string) {
@@ -177,11 +183,11 @@ function FieldRow({
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <Eye className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="text-muted-foreground">Visible:</span>
-              {isAlwaysVisible ? (
+              {isAlwaysVisible || visibleVariantNames.length === 0 ? (
                 <span className="font-medium">Siempre (todas las variantes)</span>
               ) : (
                 <span className="font-medium">
-                  Solo en {visibleVariantNames.join(", ") || "(sin variantes)"}
+                  Solo en {visibleVariantNames.join(", ")}
                 </span>
               )}
               <button
