@@ -45,7 +45,9 @@ mientras propaga DNS).
 ## WhatsApp en el footer
 
 El footer de cada plantilla tiene hardcoded el número
-`+52 55 1234 5678` (CONTACT_FALLBACK). Si tu número real es otro,
-actualízalo en los 5 archivos antes de pegar en Supabase. Resend usa
-`getContactSettings()` y lo lee de DB, pero estos HTMLs son estáticos
-y Supabase no nos deja inyectar variables propias.
+`+52 667 142 2115`. Si lo cambias, actualiza los 5 archivos y
+**vuelve a pegar cada uno en el dashboard de Supabase** — los HTMLs
+viven en el dashboard, no en este repo, así que un cambio aquí no se
+propaga solo. Resend usa `loadContact()` y lo lee de `site_settings`
+en DB, pero estos templates son estáticos y Supabase no permite
+inyectar variables custom.

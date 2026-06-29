@@ -26,8 +26,8 @@ type EmailContact = {
 };
 
 const CONTACT_FALLBACK: EmailContact = {
-  whatsapp: "525512345678",
-  whatsapp_label: "+52 55 1234 5678",
+  whatsapp: "526671422115",
+  whatsapp_label: "+52 667 142 2115",
   email: "hola@momentos.mx",
 };
 
