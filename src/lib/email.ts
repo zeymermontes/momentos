@@ -2,7 +2,94 @@ import "server-only";
 import { Resend } from "resend";
 import { serverOnlyEnv } from "@/lib/env";
 import { env } from "@/lib/env";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { GiftCard } from "@/lib/gift-cards";
+
+// ============================================================
+// Brand contact (WhatsApp, support email) — loaded once per process
+// ============================================================
+//
+// The sending mailbox is a no-reply, so every body copy needs to point
+// customers at a real contact channel. WhatsApp is the primary support
+// channel; the support email stays in the footer as a secondary option.
+// We cache after the first lookup because email rendering happens in
+// hot paths (webhooks, status transitions) and site_settings rarely
+// changes — a single warm read is fine.
+
+type EmailContact = {
+  /** Digits only — used to build wa.me links. */
+  whatsapp: string;
+  /** Human-readable form, shown in copy. */
+  whatsapp_label: string;
+  /** Support inbox shown alongside WhatsApp in the footer. */
+  email: string;
+};
+
+const CONTACT_FALLBACK: EmailContact = {
+  whatsapp: "525512345678",
+  whatsapp_label: "+52 55 1234 5678",
+  email: "hola@momentos.mx",
+};
+
+let cachedContact: EmailContact | null = null;
+
+async function loadContact(): Promise<EmailContact> {
+  if (cachedContact) return cachedContact;
+  try {
+    const admin = createAdminClient();
+    const { data } = await admin
+      .from("site_settings")
+      .select("value")
+      .eq("key", "contact")
+      .maybeSingle();
+    const v = (data?.value as Record<string, unknown> | undefined) ?? {};
+    cachedContact = {
+      whatsapp:
+        typeof v.whatsapp === "string" && v.whatsapp.length > 0
+          ? v.whatsapp
+          : CONTACT_FALLBACK.whatsapp,
+      whatsapp_label:
+        typeof v.whatsapp_label === "string" && v.whatsapp_label.length > 0
+          ? v.whatsapp_label
+          : CONTACT_FALLBACK.whatsapp_label,
+      email:
+        typeof v.email === "string" && v.email.length > 0
+          ? v.email
+          : CONTACT_FALLBACK.email,
+    };
+  } catch {
+    cachedContact = CONTACT_FALLBACK;
+  }
+  return cachedContact;
+}
+
+function waLink(whatsapp: string, prefill?: string): string {
+  const q = prefill ? `?text=${encodeURIComponent(prefill)}` : "";
+  return `https://wa.me/${whatsapp}${q}`;
+}
+
+function siteBase(): string {
+  return env.SITE_URL.replace(/\/$/, "");
+}
+
+/**
+ * Pink monospace chip used to display the short order id inline. DRYs
+ * up the same span style repeated across paid / shipped / ready /
+ * gift card buyer emails.
+ */
+function orderChip(orderShort: string): string {
+  return `<span style="font-family:monospace;background:#fdf2f8;padding:2px 6px;border-radius:4px;color:#F272b3;font-weight:600;">#${escapeHtml(orderShort)}</span>`;
+}
+
+/**
+ * Inline "Escríbenos por WhatsApp" footer fragment for body copy. The
+ * `prefill` text is dropped into the WhatsApp message so the customer
+ * doesn't have to type any context.
+ */
+function whatsappHelpLine(contact: EmailContact, prefill: string): string {
+  return `Si tienes alguna duda, escríbenos por WhatsApp al
+    <a href="${waLink(contact.whatsapp, prefill)}" style="color:#F272b3;text-decoration:none;font-weight:600;">${escapeHtml(contact.whatsapp_label)}</a>.`;
+}
 
 let cachedClient: Resend | null = null;
 
@@ -77,9 +164,11 @@ function shell(opts: {
   preheader: string;
   title: string;
   bodyHtml: string;
+  contact: EmailContact;
 }): string {
-  const logoUrl = `${env.SITE_URL.replace(/\/$/, "")}/momentos-logo.png`;
-  const productsUrl = `${env.SITE_URL.replace(/\/$/, "")}/productos`;
+  const logoUrl = `${siteBase()}/momentos-logo.png`;
+  const productsUrl = `${siteBase()}/productos`;
+  const whatsappUrl = waLink(opts.contact.whatsapp);
   return `<!doctype html>
 <html lang="es">
 <head>
@@ -114,12 +203,17 @@ function shell(opts: {
           <!-- Footer -->
           <tr>
             <td style="padding:20px 24px;background:#fdf2f8;border-top:1px solid #fce7f3;text-align:center;">
-              <p style="margin:0 0 6px 0;font-size:12px;color:#6b7280;">
-                Hecho con cariño en México 🇲🇽
+              <p style="margin:0 0 8px 0;font-size:11px;color:#9ca3af;">
+                Este correo se envía desde una dirección no monitoreada. Para soporte escríbenos por WhatsApp.
               </p>
-              <p style="margin:0;font-size:11px;color:#9ca3af;">
+              <p style="margin:0 0 6px 0;font-size:13px;color:#0a0a0a;">
+                <a href="${whatsappUrl}" style="color:#F272b3;text-decoration:none;font-weight:700;">💬 WhatsApp ${escapeHtml(opts.contact.whatsapp_label)}</a>
+              </p>
+              <p style="margin:0 0 8px 0;font-size:11px;color:#9ca3af;">
                 <a href="${productsUrl}" style="color:#F272b3;text-decoration:none;font-weight:600;">momentosbooks.com</a>
-                · <a href="mailto:hola@momentos.mx" style="color:#F272b3;text-decoration:none;font-weight:600;">hola@momentos.mx</a>
+              </p>
+              <p style="margin:0;font-size:11px;color:#6b7280;">
+                Hecho con cariño en México 🇲🇽
               </p>
             </td>
           </tr>
@@ -148,14 +242,15 @@ function button(label: string, href: string): string {
 
 export async function sendGiftCardEmail(card: GiftCard): Promise<void> {
   if (!card.recipient_email) return;
+  const contact = await loadContact();
   const subject = `${
     card.sender_name ? `${card.sender_name} te envió` : "Tienes"
   } una gift card de Momentos`;
-  const html = renderGiftCardEmail(card);
+  const html = renderGiftCardEmail(card, contact);
   await sendEmail({ to: card.recipient_email, subject, html });
 }
 
-function renderGiftCardEmail(card: GiftCard): string {
+function renderGiftCardEmail(card: GiftCard, contact: EmailContact): string {
   const amountFmt = formatPeso(card.initial_amount);
   const expires = card.expires_at
     ? new Date(card.expires_at).toLocaleDateString("es-MX", {
@@ -177,7 +272,7 @@ function renderGiftCardEmail(card: GiftCard): string {
     ? `<p style="margin:8px 0 0 0;font-size:12px;color:#71717a;text-align:center;">Vigencia hasta el ${expires}</p>`
     : "";
 
-  const productsUrl = `${env.SITE_URL.replace(/\/$/, "")}/productos`;
+  const productsUrl = `${siteBase()}/productos`;
 
   const body = `
     <p style="margin:0 0 6px 0;font-size:15px;color:#525252;">${greeting}</p>
@@ -204,6 +299,7 @@ function renderGiftCardEmail(card: GiftCard): string {
     preheader: `Saldo de ${amountFmt} — código ${card.code}`,
     title: "Tu gift card de Momentos",
     bodyHtml: body,
+    contact,
   });
 }
 
@@ -225,20 +321,24 @@ export async function sendBuyerGiftCardConfirmation(args: {
   cards: BuyerGiftCardIssued[];
 }): Promise<void> {
   if (!args.cards.length) return;
+  const contact = await loadContact();
   const count = args.cards.length;
   const subject =
     count === 1
       ? "¡Tu gift card está en camino!"
       : `¡Tus ${count} gift cards están en camino!`;
-  const html = renderBuyerConfirmationEmail(args);
+  const html = renderBuyerConfirmationEmail(args, contact);
   await sendEmail({ to: args.buyerEmail, subject, html });
 }
 
-function renderBuyerConfirmationEmail(args: {
-  buyerName: string | null;
-  orderId: string;
-  cards: BuyerGiftCardIssued[];
-}): string {
+function renderBuyerConfirmationEmail(
+  args: {
+    buyerName: string | null;
+    orderId: string;
+    cards: BuyerGiftCardIssued[];
+  },
+  contact: EmailContact,
+): string {
   const greeting = args.buyerName
     ? `¡Gracias ${escapeHtml(args.buyerName)}!`
     : "¡Gracias!";
@@ -300,10 +400,10 @@ function renderBuyerConfirmationEmail(args: {
 
     <p style="margin:20px 0 0 0;font-size:14px;color:#3f3f46;line-height:1.5;">${closing}</p>
     <p style="margin:16px 0 0 0;font-size:12px;color:#71717a;">
-      Pedido <span style="font-family:monospace;background:#fdf2f8;padding:2px 6px;border-radius:4px;color:#F272b3;">#${orderShort}</span>
+      Pedido ${orderChip(orderShort)}
     </p>
-    <p style="margin:8px 0 0 0;font-size:12px;color:#9ca3af;">
-      ¿Algo no salió como esperabas? Respóndenos a este correo y con gusto te ayudamos.
+    <p style="margin:8px 0 0 0;font-size:12px;color:#9ca3af;line-height:1.5;">
+      ${whatsappHelpLine(contact, `Hola, tengo una duda con mi pedido #${orderShort}`)}
     </p>
   `;
 
@@ -311,6 +411,7 @@ function renderBuyerConfirmationEmail(args: {
     preheader: `${single ? "Tu gift card" : `${args.cards.length} gift cards`} por ${totalFmt}`,
     title: "Confirmación de tu pedido",
     bodyHtml: body,
+    contact,
   });
 }
 
@@ -322,7 +423,8 @@ export async function sendWelcomeEmail(args: {
   to: string;
   name: string | null;
 }): Promise<void> {
-  const html = renderWelcomeEmail(args);
+  const contact = await loadContact();
+  const html = renderWelcomeEmail(args, contact);
   await sendEmail({
     to: args.to,
     subject: "¡Bienvenido a Momentos! ✨",
@@ -330,11 +432,14 @@ export async function sendWelcomeEmail(args: {
   });
 }
 
-function renderWelcomeEmail(args: { name: string | null }): string {
+function renderWelcomeEmail(
+  args: { name: string | null },
+  contact: EmailContact,
+): string {
   const greeting = args.name
     ? `¡Hola ${escapeHtml(args.name)}!`
     : "¡Hola!";
-  const fotolibroUrl = `${env.SITE_URL.replace(/\/$/, "")}/fotolibro`;
+  const fotolibroUrl = `${siteBase()}/fotolibro`;
 
   const body = `
     <p style="margin:0 0 6px 0;font-size:15px;color:#525252;">${greeting}</p>
@@ -355,7 +460,7 @@ function renderWelcomeEmail(args: { name: string | null }): string {
     ${button("Crear mi fotolibro", fotolibroUrl)}
 
     <p style="margin:24px 0 0 0;font-size:13px;color:#71717a;line-height:1.5;">
-      Si tienes alguna duda, respóndenos a este correo. Estamos aquí para ayudarte a guardar tus momentos para siempre.
+      ${whatsappHelpLine(contact, "Hola, acabo de crear mi cuenta en Momentos y tengo una duda")} Estamos aquí para ayudarte a guardar tus momentos para siempre.
     </p>
   `;
 
@@ -363,6 +468,7 @@ function renderWelcomeEmail(args: { name: string | null }): string {
     preheader: "Crea tu primer fotolibro en minutos",
     title: "Bienvenido a Momentos",
     bodyHtml: body,
+    contact,
   });
 }
 
@@ -385,7 +491,8 @@ export async function sendOrderPaidEmail(args: {
   total: number;
   fulfillment: "ship" | "pickup" | "digital";
 }): Promise<void> {
-  const html = renderOrderPaidEmail(args);
+  const contact = await loadContact();
+  const html = renderOrderPaidEmail(args, contact);
   await sendEmail({
     to: args.to,
     subject: `¡Recibimos tu pago! Pedido #${args.orderId.slice(0, 8)}`,
@@ -393,16 +500,19 @@ export async function sendOrderPaidEmail(args: {
   });
 }
 
-function renderOrderPaidEmail(args: {
-  name: string | null;
-  orderId: string;
-  items: OrderEmailItem[];
-  total: number;
-  fulfillment: "ship" | "pickup" | "digital";
-}): string {
+function renderOrderPaidEmail(
+  args: {
+    name: string | null;
+    orderId: string;
+    items: OrderEmailItem[];
+    total: number;
+    fulfillment: "ship" | "pickup" | "digital";
+  },
+  contact: EmailContact,
+): string {
   const greeting = args.name ? `¡Gracias ${escapeHtml(args.name)}!` : "¡Gracias!";
   const orderShort = args.orderId.slice(0, 8);
-  const orderUrl = `${env.SITE_URL.replace(/\/$/, "")}/mi-cuenta/pedidos/${args.orderId}`;
+  const orderUrl = `${siteBase()}/mi-cuenta/pedidos/${args.orderId}`;
 
   const rows = args.items
     .map(
@@ -432,7 +542,7 @@ function renderOrderPaidEmail(args: {
       Recibimos tu pago ✅
     </h1>
     <p style="margin:0 0 24px 0;font-size:14px;color:#3f3f46;line-height:1.5;">
-      Pedido <span style="font-family:monospace;background:#fdf2f8;padding:2px 6px;border-radius:4px;color:#F272b3;font-weight:600;">#${orderShort}</span>
+      Pedido ${orderChip(orderShort)}
     </p>
 
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;margin-bottom:8px;">
@@ -446,12 +556,17 @@ function renderOrderPaidEmail(args: {
     <p style="margin:24px 0 0 0;font-size:14px;color:#3f3f46;line-height:1.5;">${nextStep}</p>
 
     ${button("Ver mi pedido", orderUrl)}
+
+    <p style="margin:24px 0 0 0;font-size:13px;color:#71717a;line-height:1.5;">
+      ${whatsappHelpLine(contact, `Hola, tengo una duda sobre mi pedido #${orderShort}`)}
+    </p>
   `;
 
   return shell({
     preheader: `Pago confirmado — pedido #${orderShort}`,
     title: "Pago recibido",
     bodyHtml: body,
+    contact,
   });
 }
 
@@ -467,7 +582,8 @@ export async function sendOrderShippedEmail(args: {
   trackingNumber: string | null;
   trackingUrl: string | null;
 }): Promise<void> {
-  const html = renderOrderShippedEmail(args);
+  const contact = await loadContact();
+  const html = renderOrderShippedEmail(args, contact);
   await sendEmail({
     to: args.to,
     subject: `📦 ¡Tu pedido va en camino! #${args.orderId.slice(0, 8)}`,
@@ -475,16 +591,19 @@ export async function sendOrderShippedEmail(args: {
   });
 }
 
-function renderOrderShippedEmail(args: {
-  name: string | null;
-  orderId: string;
-  carrier: string | null;
-  trackingNumber: string | null;
-  trackingUrl: string | null;
-}): string {
+function renderOrderShippedEmail(
+  args: {
+    name: string | null;
+    orderId: string;
+    carrier: string | null;
+    trackingNumber: string | null;
+    trackingUrl: string | null;
+  },
+  contact: EmailContact,
+): string {
   const greeting = args.name ? `¡Hola ${escapeHtml(args.name)}!` : "¡Hola!";
   const orderShort = args.orderId.slice(0, 8);
-  const orderUrl = `${env.SITE_URL.replace(/\/$/, "")}/mi-cuenta/pedidos/${args.orderId}`;
+  const orderUrl = `${siteBase()}/mi-cuenta/pedidos/${args.orderId}`;
 
   const trackingBlock = args.trackingNumber
     ? `<div style="margin:24px 0;padding:20px;background:#fdf2f8;border-radius:12px;border-left:4px solid #F272b3;">
@@ -501,7 +620,7 @@ function renderOrderShippedEmail(args: {
       Tu pedido salió 📦
     </h1>
     <p style="margin:0 0 16px 0;font-size:14px;color:#3f3f46;line-height:1.5;">
-      Pedido <span style="font-family:monospace;background:#fdf2f8;padding:2px 6px;border-radius:4px;color:#F272b3;font-weight:600;">#${orderShort}</span> ya está en camino a tu domicilio.
+      Pedido ${orderChip(orderShort)} ya está en camino a tu domicilio.
     </p>
 
     ${trackingBlock}
@@ -509,7 +628,7 @@ function renderOrderShippedEmail(args: {
     ${args.trackingUrl ? button("Rastrear envío", args.trackingUrl) : button("Ver mi pedido", orderUrl)}
 
     <p style="margin:24px 0 0 0;font-size:13px;color:#71717a;line-height:1.5;">
-      Si tienes alguna duda con tu envío, respóndenos a este correo y con gusto te ayudamos.
+      ${whatsappHelpLine(contact, `Hola, tengo una duda con el envío de mi pedido #${orderShort}`)}
     </p>
   `;
 
@@ -517,6 +636,7 @@ function renderOrderShippedEmail(args: {
     preheader: `Tu pedido va en camino${args.trackingNumber ? ` — guía ${args.trackingNumber}` : ""}`,
     title: "Tu pedido va en camino",
     bodyHtml: body,
+    contact,
   });
 }
 
@@ -524,15 +644,32 @@ function renderOrderShippedEmail(args: {
 // Order ready for pickup
 // ============================================================
 
+export type BranchScheduleLine = {
+  day: string;
+  value: string;
+  closed: boolean;
+};
+
 export async function sendOrderReadyEmail(args: {
   to: string;
   name: string | null;
   orderId: string;
   branchName: string | null;
   branchAddress: string | null;
+  /**
+   * Structured weekly schedule rendered as a table (one row per day).
+   * Use this when the branch has `hours_schedule` configured.
+   */
+  branchSchedule: BranchScheduleLine[] | null;
+  /**
+   * Free-form legacy `branches.hours` text — fallback for branches not
+   * yet migrated through the new admin editor. Ignored when
+   * `branchSchedule` is present.
+   */
   branchHours: string | null;
 }): Promise<void> {
-  const html = renderOrderReadyEmail(args);
+  const contact = await loadContact();
+  const html = renderOrderReadyEmail(args, contact);
   await sendEmail({
     to: args.to,
     subject: `🎁 Tu pedido está listo para recoger #${args.orderId.slice(0, 8)}`,
@@ -540,25 +677,49 @@ export async function sendOrderReadyEmail(args: {
   });
 }
 
-function renderOrderReadyEmail(args: {
-  name: string | null;
-  orderId: string;
-  branchName: string | null;
-  branchAddress: string | null;
-  branchHours: string | null;
-}): string {
+function renderOrderReadyEmail(
+  args: {
+    name: string | null;
+    orderId: string;
+    branchName: string | null;
+    branchAddress: string | null;
+    branchSchedule: BranchScheduleLine[] | null;
+    branchHours: string | null;
+  },
+  contact: EmailContact,
+): string {
   const greeting = args.name ? `¡Hola ${escapeHtml(args.name)}!` : "¡Hola!";
   const orderShort = args.orderId.slice(0, 8);
-  const orderUrl = `${env.SITE_URL.replace(/\/$/, "")}/mi-cuenta/pedidos/${args.orderId}`;
+  const orderUrl = `${siteBase()}/mi-cuenta/pedidos/${args.orderId}`;
+
+  // Prefer the structured schedule rendered as a weekly table — much
+  // easier to scan than a comma-joined line. Falls back to the legacy
+  // `branches.hours` free-form text if no schedule was configured.
+  const scheduleHtml =
+    args.branchSchedule && args.branchSchedule.length > 0
+      ? `<p style="margin:0 0 6px 0;font-size:11px;font-weight:700;color:#F272b3;letter-spacing:0.06em;text-transform:uppercase;">Horario de la sucursal</p>
+         <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;margin:0;">
+           ${args.branchSchedule
+             .map(
+               (l) => `<tr>
+                 <td style="padding:3px 0;font-size:13px;color:#71717a;width:35%;">${escapeHtml(l.day)}</td>
+                 <td style="padding:3px 0;font-size:13px;color:${l.closed ? "#9ca3af" : "#0a0a0a"};font-style:${l.closed ? "italic" : "normal"};font-weight:${l.closed ? "400" : "600"};">${escapeHtml(l.value)}</td>
+               </tr>`,
+             )
+             .join("")}
+         </table>`
+      : args.branchHours
+        ? `<p style="margin:0 0 4px 0;font-size:11px;font-weight:700;color:#F272b3;letter-spacing:0.06em;text-transform:uppercase;">Horario</p>
+           <p style="margin:0;font-size:13px;color:#525252;">${escapeHtml(args.branchHours)}</p>`
+        : "";
 
   const branchBlock =
-    args.branchName || args.branchAddress
+    args.branchName || args.branchAddress || scheduleHtml
       ? `<div style="margin:24px 0;padding:20px;background:#fdf2f8;border-radius:12px;border-left:4px solid #F272b3;">
           ${args.branchName ? `<p style="margin:0 0 6px 0;font-size:12px;font-weight:700;color:#F272b3;letter-spacing:0.06em;text-transform:uppercase;">Sucursal</p>
           <p style="margin:0 0 12px 0;font-size:16px;font-weight:700;color:#0a0a0a;">${escapeHtml(args.branchName)}</p>` : ""}
-          ${args.branchAddress ? `<p style="margin:0 0 12px 0;font-size:14px;color:#3f3f46;line-height:1.5;">${escapeHtml(args.branchAddress)}</p>` : ""}
-          ${args.branchHours ? `<p style="margin:0 0 4px 0;font-size:11px;font-weight:700;color:#F272b3;letter-spacing:0.06em;text-transform:uppercase;">Horario</p>
-          <p style="margin:0;font-size:13px;color:#525252;">${escapeHtml(args.branchHours)}</p>` : ""}
+          ${args.branchAddress ? `<p style="margin:0 0 16px 0;font-size:14px;color:#3f3f46;line-height:1.5;">${escapeHtml(args.branchAddress)}</p>` : ""}
+          ${scheduleHtml}
         </div>`
       : "";
 
@@ -568,7 +729,7 @@ function renderOrderReadyEmail(args: {
       ¡Tu pedido está listo! 🎁
     </h1>
     <p style="margin:0 0 16px 0;font-size:14px;color:#3f3f46;line-height:1.5;">
-      Pedido <span style="font-family:monospace;background:#fdf2f8;padding:2px 6px;border-radius:4px;color:#F272b3;font-weight:600;">#${orderShort}</span> ya está listo para que lo recojas.
+      Pedido ${orderChip(orderShort)} ya está listo para que lo recojas.
     </p>
 
     ${branchBlock}
@@ -576,7 +737,7 @@ function renderOrderReadyEmail(args: {
     ${button("Ver mi pedido", orderUrl)}
 
     <p style="margin:24px 0 0 0;font-size:13px;color:#71717a;line-height:1.5;">
-      Lleva una identificación al recoger. Si necesitas que vaya alguien más en tu nombre, respóndenos a este correo para arreglarlo.
+      Lleva una identificación al recoger. ${whatsappHelpLine(contact, `Hola, voy a recoger mi pedido #${orderShort} y tengo una duda`)}
     </p>
   `;
 
@@ -584,6 +745,7 @@ function renderOrderReadyEmail(args: {
     preheader: `Tu pedido #${orderShort} está listo para recoger`,
     title: "Tu pedido está listo",
     bodyHtml: body,
+    contact,
   });
 }
 

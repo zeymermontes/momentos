@@ -41,3 +41,11 @@ Los templates usan estas variables (Supabase las reemplaza al enviar):
 Los templates apuntan a `https://momentosbooks.com/momentos-logo.png`.
 Si cambias el dominio, edita esa URL en cada archivo (o usa el viejo
 mientras propaga DNS).
+
+## WhatsApp en el footer
+
+El footer de cada plantilla tiene hardcoded el número
+`+52 55 1234 5678` (CONTACT_FALLBACK). Si tu número real es otro,
+actualízalo en los 5 archivos antes de pegar en Supabase. Resend usa
+`getContactSettings()` y lo lee de DB, pero estos HTMLs son estáticos
+y Supabase no nos deja inyectar variables propias.

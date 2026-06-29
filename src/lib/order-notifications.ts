@@ -5,6 +5,7 @@ import {
   sendOrderShippedEmail,
   sendOrderReadyEmail,
   type OrderEmailItem,
+  type BranchScheduleLine,
 } from "@/lib/email";
 
 /**
@@ -105,17 +106,29 @@ export async function notifyOrderReady(orderId: string): Promise<void> {
     const admin = createAdminClient();
     let branchName: string | null = null;
     let branchAddress: string | null = null;
+    let branchSchedule: BranchScheduleLine[] | null = null;
     let branchHours: string | null = null;
     if (data.order.branch_id) {
       const { data: branch } = await admin
         .from("branches")
-        .select("name, address, city, hours")
+        .select("name, address, city, hours, hours_schedule")
         .eq("id", data.order.branch_id)
         .maybeSingle();
       if (branch) {
+        const { hasAnySlot, parseBranchSchedule, scheduleAsLines } =
+          await import("@/lib/branch-hours");
         branchName = branch.name;
         branchAddress = `${branch.address}, ${branch.city}`;
-        branchHours = branch.hours;
+        // Prefer the structured schedule — passed through as a typed
+        // array of weekday lines so the email can render it as a table.
+        // Falls back to the legacy free-form `branches.hours` text
+        // when the branch hasn't been migrated through admin yet.
+        const schedule = parseBranchSchedule(branch.hours_schedule);
+        if (hasAnySlot(schedule)) {
+          branchSchedule = scheduleAsLines(schedule);
+        } else {
+          branchHours = branch.hours;
+        }
       }
     }
     await sendOrderReadyEmail({
@@ -124,6 +137,7 @@ export async function notifyOrderReady(orderId: string): Promise<void> {
       orderId: data.order.id,
       branchName,
       branchAddress,
+      branchSchedule,
       branchHours,
     });
   } catch (e) {
