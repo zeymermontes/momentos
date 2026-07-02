@@ -22,6 +22,12 @@ export type PhotobookProject = {
   cover_crop: CropState;
   status: string;
   print_sheets: PrintSheetRef[] | null;
+  /**
+   * Last hardcover choice the customer picked before adding to cart.
+   * Persisted so admin views can show the right badge + charge and so
+   * the pre-order preview keeps its choice sticky.
+   */
+  hardcover: boolean;
 };
 
 export type PhotobookPage = {
@@ -39,6 +45,13 @@ export type PhotobookSize = {
   cm: number;
   label: string;
   sublabel: string;
+  /**
+   * When false, the size only sells with pasta blanda — the storefront
+   * hides the picker and no hardcover cost is added regardless of what
+   * the customer's client tries to send. When true, `hardcover_price`
+   * is the up-charge for pasta dura at this size.
+   */
+  supports_hardcover: boolean;
   hardcover_price: number;
   /**
    * Total price in MXN for each page count option. Non-proportional —
@@ -59,6 +72,7 @@ export const DEFAULT_SETTINGS: PhotobookSettings = {
       cm: 15,
       label: "Pequeño",
       sublabel: "15 × 15 cm",
+      supports_hardcover: true,
       hardcover_price: 80,
       prices: { 20: 160, 40: 280, 60: 380 },
     },
@@ -66,6 +80,7 @@ export const DEFAULT_SETTINGS: PhotobookSettings = {
       cm: 20,
       label: "Mediano",
       sublabel: "20 × 20 cm",
+      supports_hardcover: true,
       hardcover_price: 120,
       prices: { 20: 220, 40: 400, 60: 560 },
     },
@@ -73,6 +88,7 @@ export const DEFAULT_SETTINGS: PhotobookSettings = {
       cm: 30,
       label: "Grande",
       sublabel: "30 × 30 cm",
+      supports_hardcover: true,
       hardcover_price: 180,
       prices: { 20: 320, 40: 580, 60: 820 },
     },
@@ -90,7 +106,11 @@ export function getPhotobookPrice(
   const size = settings.sizes.find((s) => s.cm === sizeCm);
   if (!size) return 0;
   const base = size.prices?.[pageCount] ?? 0;
-  return hardcover ? base + (size.hardcover_price ?? 0) : base;
+  // A size can opt out of hardcover entirely — in that case ignore
+  // whatever `hardcover` was passed so a stale client can't sneak the
+  // up-charge past a config change.
+  const canUseHardcover = size.supports_hardcover !== false && hardcover;
+  return canUseHardcover ? base + (size.hardcover_price ?? 0) : base;
 }
 
 export const DEFAULT_CROP: CropState = { x: 0, y: 0, scale: 1, rotation: 0 };

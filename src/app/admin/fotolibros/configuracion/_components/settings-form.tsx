@@ -20,7 +20,11 @@ export function PhotobookSettingsForm({
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
 
-  function updateSize(index: number, field: keyof PhotobookSize, value: string | number) {
+  function updateSize(
+    index: number,
+    field: keyof PhotobookSize,
+    value: string | number | boolean,
+  ) {
     setSizes((prev) =>
       prev.map((s, i) => (i === index ? { ...s, [field]: value } : s)),
     );
@@ -43,6 +47,7 @@ export function PhotobookSettingsForm({
         cm: 25,
         label: "Nuevo",
         sublabel: "25 × 25 cm",
+        supports_hardcover: true,
         hardcover_price: 150,
         prices: Object.fromEntries(pageCounts.map((c) => [c, c * 12])),
       },
@@ -166,14 +171,38 @@ export function PhotobookSettingsForm({
                     placeholder="20 × 20 cm"
                   />
                 </div>
-                <div className="col-span-2">
-                  <Label>Costo pasta dura (MXN)</Label>
-                  <Input
-                    type="number"
-                    value={size.hardcover_price}
-                    onChange={(e) => updateSize(i, "hardcover_price", Number(e.target.value))}
-                    min={0}
-                  />
+                <div className="col-span-2 space-y-2 rounded-md border border-border bg-muted/30 p-3">
+                  <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={size.supports_hardcover !== false}
+                      onChange={(e) =>
+                        updateSize(i, "supports_hardcover", e.target.checked)
+                      }
+                      className="h-4 w-4 rounded border-border"
+                    />
+                    Este tamaño acepta pasta dura
+                  </label>
+                  {size.supports_hardcover !== false ? (
+                    <div>
+                      <Label>Costo pasta dura (MXN)</Label>
+                      <Input
+                        type="number"
+                        value={size.hardcover_price}
+                        onChange={(e) =>
+                          updateSize(i, "hardcover_price", Number(e.target.value))
+                        }
+                        min={0}
+                      />
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Se suma al precio base cuando el cliente elige pasta dura.
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      El cliente solo verá pasta blanda para este tamaño.
+                    </p>
+                  )}
                 </div>
               </div>
 

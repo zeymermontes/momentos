@@ -19,18 +19,34 @@ export function AddToCartButton({
   pageCount: number;
   settings: PhotobookSettings;
 }) {
+  const sizeConfig = settings.sizes.find((s) => s.cm === sizeCm);
+  const supportsHardcover = sizeConfig?.supports_hardcover !== false;
+  const hardcoverExtra = sizeConfig?.hardcover_price ?? 100;
+
+  // When the size doesn't offer pasta dura, force `hardcover` to false so
+  // the price calc, cart payload, and later admin views all agree — the
+  // client-side picker is hidden but the state has to stay in sync in
+  // case a config toggle happens mid-session.
   const [hardcover, setHardcover] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const [isPending, startTransition] = useTransition();
 
-  const sizeConfig = settings.sizes.find((s) => s.cm === sizeCm);
-  const hardcoverExtra = sizeConfig?.hardcover_price ?? 100;
-  const unitPrice = getPhotobookPrice(settings, sizeCm, pageCount, hardcover);
+  const effectiveHardcover = supportsHardcover && hardcover;
+  const unitPrice = getPhotobookPrice(
+    settings,
+    sizeCm,
+    pageCount,
+    effectiveHardcover,
+  );
   const total = unitPrice * quantity;
 
   function handleClick() {
     startTransition(async () => {
-      const result = await addPhotobookToCartAction(projectId, hardcover, quantity);
+      const result = await addPhotobookToCartAction(
+        projectId,
+        effectiveHardcover,
+        quantity,
+      );
       if (result?.message) {
         alert(result.message);
       }
@@ -39,40 +55,44 @@ export function AddToCartButton({
 
   return (
     <div className="w-full max-w-md space-y-4 rounded-xl border border-border bg-card p-5">
-      {/* Cover type */}
-      <div className="space-y-2">
-        <p className="text-sm font-medium">Tipo de portada</p>
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => setHardcover(false)}
-            className={cn(
-              "rounded-lg border-2 p-3 text-sm transition",
-              !hardcover
-                ? "border-primary bg-primary/5"
-                : "border-border hover:border-primary/40",
-            )}
-          >
-            <span className="font-semibold">Pasta blanda</span>
-            <span className="block text-xs text-muted-foreground">Incluida</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setHardcover(true)}
-            className={cn(
-              "rounded-lg border-2 p-3 text-sm transition",
-              hardcover
-                ? "border-primary bg-primary/5"
-                : "border-border hover:border-primary/40",
-            )}
-          >
-            <span className="font-semibold">Pasta dura</span>
-            <span className="block text-xs text-muted-foreground">
-              +{formatMXN(hardcoverExtra)}
-            </span>
-          </button>
+      {/* Cover type — only rendered when the admin marked this size as
+          supporting hardcover. Otherwise pasta blanda is the only option
+          and there's no picker to show. */}
+      {supportsHardcover ? (
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Tipo de portada</p>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setHardcover(false)}
+              className={cn(
+                "rounded-lg border-2 p-3 text-sm transition",
+                !hardcover
+                  ? "border-primary bg-primary/5"
+                  : "border-border hover:border-primary/40",
+              )}
+            >
+              <span className="font-semibold">Pasta blanda</span>
+              <span className="block text-xs text-muted-foreground">Incluida</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setHardcover(true)}
+              className={cn(
+                "rounded-lg border-2 p-3 text-sm transition",
+                hardcover
+                  ? "border-primary bg-primary/5"
+                  : "border-border hover:border-primary/40",
+              )}
+            >
+              <span className="font-semibold">Pasta dura</span>
+              <span className="block text-xs text-muted-foreground">
+                +{formatMXN(hardcoverExtra)}
+              </span>
+            </button>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {/* Quantity */}
       <div className="flex items-center justify-between">
@@ -103,7 +123,7 @@ export function AddToCartButton({
           <span>Fotolibro {sizeCm}×{sizeCm} cm · {pageCount} pág.</span>
           <span>{formatMXN(getPhotobookPrice(settings, sizeCm, pageCount, false))}</span>
         </div>
-        {hardcover && (
+        {effectiveHardcover && (
           <div className="flex justify-between text-muted-foreground">
             <span>Pasta dura</span>
             <span>+{formatMXN(hardcoverExtra)}</span>

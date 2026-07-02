@@ -624,6 +624,7 @@ export interface Database {
           cover_crop: Json;
           status: string;
           print_sheets: Json | null;
+          hardcover: boolean;
           created_at: string;
           updated_at: string;
         },
@@ -638,6 +639,7 @@ export interface Database {
           cover_crop?: Json;
           status?: string;
           print_sheets?: Json | null;
+          hardcover?: boolean;
           created_at?: string;
           updated_at?: string;
         }

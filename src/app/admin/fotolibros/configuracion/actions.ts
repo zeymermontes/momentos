@@ -20,7 +20,9 @@ export async function updatePhotobookSettingsAction(
     for (const s of settings.sizes) {
       if (s.cm <= 0) return { message: "El tamaño en cm debe ser mayor a 0." };
       if (!s.label.trim()) return { message: "Cada tamaño necesita una etiqueta." };
-      if (s.hardcover_price < 0) return { message: "El costo de pasta dura no puede ser negativo." };
+      if (s.supports_hardcover && s.hardcover_price < 0) {
+        return { message: `El costo de pasta dura para "${s.label}" no puede ser negativo.` };
+      }
       if (!s.prices || Object.keys(s.prices).length === 0) {
         return { message: `Define al menos un precio para el tamaño ${s.label}.` };
       }

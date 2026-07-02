@@ -1,9 +1,33 @@
 import { createClient } from "@/lib/supabase/server";
 import { DEFAULT_CROP, DEFAULT_SETTINGS } from "@/lib/photobook-config";
-import type { CropState, PhotobookProject, PhotobookPage, PhotobookSettings } from "@/lib/photobook-config";
+import type { CropState, PhotobookProject, PhotobookPage, PhotobookSettings, PhotobookSize } from "@/lib/photobook-config";
 
 export type { CropState, PhotobookProject, PhotobookPage, PhotobookSettings };
 export { DEFAULT_SETTINGS, getPhotobookPrice } from "@/lib/photobook-config";
+
+/**
+ * Normalize a stored size row. `supports_hardcover` was added later, so
+ * old settings JSONB may not have the field — default to `true` to
+ * preserve the historical behavior (all sizes offered pasta dura).
+ */
+function normalizeSize(raw: unknown): PhotobookSize | null {
+  if (!raw || typeof raw !== "object") return null;
+  const s = raw as Record<string, unknown>;
+  if (typeof s.cm !== "number") return null;
+  return {
+    cm: s.cm,
+    label: typeof s.label === "string" ? s.label : "",
+    sublabel: typeof s.sublabel === "string" ? s.sublabel : "",
+    supports_hardcover:
+      typeof s.supports_hardcover === "boolean" ? s.supports_hardcover : true,
+    hardcover_price:
+      typeof s.hardcover_price === "number" ? s.hardcover_price : 0,
+    prices:
+      s.prices && typeof s.prices === "object"
+        ? (s.prices as Record<number, number>)
+        : {},
+  };
+}
 
 export async function getPhotobookSettings(): Promise<PhotobookSettings> {
   const supabase = await createClient();
@@ -14,8 +38,11 @@ export async function getPhotobookSettings(): Promise<PhotobookSettings> {
     .maybeSingle();
   if (!data?.value || typeof data.value !== "object") return DEFAULT_SETTINGS;
   const v = data.value as Record<string, unknown>;
+  const sizes = Array.isArray(v.sizes)
+    ? v.sizes.map(normalizeSize).filter((s): s is PhotobookSize => s !== null)
+    : DEFAULT_SETTINGS.sizes;
   return {
-    sizes: Array.isArray(v.sizes) ? v.sizes as PhotobookSettings["sizes"] : DEFAULT_SETTINGS.sizes,
+    sizes: sizes.length > 0 ? sizes : DEFAULT_SETTINGS.sizes,
     page_counts: Array.isArray(v.page_counts) ? v.page_counts as number[] : DEFAULT_SETTINGS.page_counts,
     enabled: typeof v.enabled === "boolean" ? v.enabled : true,
   };

@@ -35,7 +35,7 @@ export default async function AdminPhotobooksPage() {
 
   const { data: projects } = await supabase
     .from("photobook_projects")
-    .select("id, size_cm, page_count, title, status, created_at, updated_at, user_id, print_sheets")
+    .select("id, size_cm, page_count, title, status, created_at, updated_at, user_id, print_sheets, hardcover")
     .order("updated_at", { ascending: false });
 
   const userIds = [...new Set((projects ?? []).map((p) => p.user_id))];
@@ -93,13 +93,18 @@ export default async function AdminPhotobooksPage() {
                     {p.title || "Sin título"}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
-                    {p.size_cm}×{p.size_cm} cm
+                    <div className="flex flex-col gap-0.5">
+                      <span>{p.size_cm}×{p.size_cm} cm</span>
+                      <Badge variant={p.hardcover ? "default" : "muted"} className="w-fit">
+                        {p.hardcover ? "Pasta dura" : "Pasta blanda"}
+                      </Badge>
+                    </div>
                   </TableCell>
                   <TableCell className="text-sm">
                     {p.page_count}
                   </TableCell>
                   <TableCell className="text-sm font-medium">
-                    {formatMXN(getPhotobookPrice(settings, p.size_cm, p.page_count))}
+                    {formatMXN(getPhotobookPrice(settings, p.size_cm, p.page_count, p.hardcover))}
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col gap-1">

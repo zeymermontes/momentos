@@ -42,7 +42,12 @@ export default async function AdminPhotobookDetailPage({
 
   const filledPages = pages.filter((p) => p.image_url);
   const settings = await getPhotobookSettings();
-  const price = getPhotobookPrice(settings, project.size_cm, project.page_count);
+  const price = getPhotobookPrice(
+    settings,
+    project.size_cm,
+    project.page_count,
+    project.hardcover,
+  );
   const existingSheets = project.print_sheets
     ? await getPrintSheetUrls(project.print_sheets)
     : [];
@@ -60,11 +65,14 @@ export default async function AdminPhotobookDetailPage({
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="space-y-1">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <Book className="h-5 w-5 text-primary" />
             <h2 className="text-xl font-bold">{project.title || "Sin título"}</h2>
             <Badge variant={STATUS_BADGE[project.status] ?? "muted"}>
               {STATUS_LABEL[project.status] ?? project.status}
+            </Badge>
+            <Badge variant={project.hardcover ? "default" : "muted"}>
+              {project.hardcover ? "Pasta dura" : "Pasta blanda"}
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground">

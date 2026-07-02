@@ -332,15 +332,33 @@ export async function addPhotobookToCartAction(
       return { message: "Agrega al menos una foto a tu fotolibro." };
     }
 
-    await supabase
-      .from("photobook_projects")
-      .update({ status: "completed", updated_at: new Date().toISOString() })
-      .eq("id", projectId);
-
     const { getPhotobookSettings } = await import("@/lib/photobook");
     const { getPhotobookPrice } = await import("@/lib/photobook-config");
     const settings = await getPhotobookSettings();
-    const unitPrice = getPhotobookPrice(settings, project.size_cm, project.page_count, hardcover);
+    // If the size doesn't support hardcover, silently coerce to false —
+    // the storefront picker should already be hidden, but a stale tab
+    // could still POST hardcover=true and we don't want it accepted.
+    const sizeConfig = settings.sizes.find((s) => s.cm === project.size_cm);
+    const effectiveHardcover =
+      sizeConfig?.supports_hardcover !== false && hardcover;
+    const unitPrice = getPhotobookPrice(
+      settings,
+      project.size_cm,
+      project.page_count,
+      effectiveHardcover,
+    );
+
+    // Persist the choice on the project too so /admin/fotolibros can
+    // show the correct badge and price without JOINing back to
+    // order_items.
+    await supabase
+      .from("photobook_projects")
+      .update({
+        status: "completed",
+        hardcover: effectiveHardcover,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", projectId);
 
     const { getOrCreateCart } = await import("@/lib/cart");
     const cart = await getOrCreateCart();
@@ -373,7 +391,7 @@ export async function addPhotobookToCartAction(
         size_cm: project.size_cm,
         page_count: project.page_count,
         filled_pages: filledPages.length,
-        hardcover,
+        hardcover: effectiveHardcover,
       },
       preview_url: coverPreviewUrl,
     });
