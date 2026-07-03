@@ -38,15 +38,39 @@ export default async function AdminPhotobooksPage() {
     .select("id, size_cm, page_count, title, status, created_at, updated_at, user_id, print_sheets, hardcover")
     .order("updated_at", { ascending: false });
 
-  const userIds = [...new Set((projects ?? []).map((p) => p.user_id))];
+  const projectList = projects ?? [];
+  const userIds = [...new Set(projectList.map((p) => p.user_id))];
   const { data: profiles } = userIds.length > 0
     ? await supabase.from("profiles").select("id, full_name").in("id", userIds)
     : { data: [] };
   const profileMap = new Map((profiles ?? []).map((p) => [p.id, p.full_name]));
 
-  const items = (projects ?? []).map((p) => ({
+  // For ordered projects, show the unit_price the customer actually paid
+  // instead of recomputing from current settings — the config may have
+  // changed since the order and we want to reflect the real charge (which
+  // by definition already includes pasta dura when it applied).
+  const { data: rawOrderItems } = await supabase
+    .from("order_items")
+    .select("unit_price, customization")
+    .not("customization->>photobook_project_id", "is", null);
+  const orderedPriceByProject = new Map<string, number>();
+  for (const oi of rawOrderItems ?? []) {
+    const cust = oi.customization as { photobook_project_id?: string } | null;
+    const pid = cust?.photobook_project_id;
+    if (typeof pid === "string" && !orderedPriceByProject.has(pid)) {
+      orderedPriceByProject.set(pid, Number(oi.unit_price));
+    }
+  }
+
+  const items = projectList.map((p) => ({
     ...p,
     profile_name: profileMap.get(p.user_id) ?? null,
+    // Preferred display price: actual charged unit_price for ordered
+    // projects, otherwise the computed current-config price.
+    display_price:
+      orderedPriceByProject.get(p.id) ??
+      getPhotobookPrice(settings, p.size_cm, p.page_count, p.hardcover),
+    is_historical_price: orderedPriceByProject.has(p.id),
   }));
 
   return (
@@ -104,7 +128,14 @@ export default async function AdminPhotobooksPage() {
                     {p.page_count}
                   </TableCell>
                   <TableCell className="text-sm font-medium">
-                    {formatMXN(getPhotobookPrice(settings, p.size_cm, p.page_count, p.hardcover))}
+                    <div className="flex flex-col">
+                      <span>{formatMXN(p.display_price)}</span>
+                      {p.is_historical_price ? (
+                        <span className="text-[10px] font-normal text-muted-foreground">
+                          precio pagado
+                        </span>
+                      ) : null}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col gap-1">

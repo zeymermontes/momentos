@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { requireAdmin } from "@/lib/auth";
 import { getProject, getProjectPages, getCoverUrl, getPrintSheetUrls } from "@/lib/photobook";
 import { getPhotobookSettings, getPhotobookPrice } from "@/lib/photobook";
+import { createClient } from "@/lib/supabase/server";
 import { GenerateSheets } from "@/components/photobook/generate-sheets";
 import { PageThumb } from "@/components/photobook/page-preview";
 import { formatMXN } from "@/lib/utils";
@@ -42,12 +43,29 @@ export default async function AdminPhotobookDetailPage({
 
   const filledPages = pages.filter((p) => p.image_url);
   const settings = await getPhotobookSettings();
-  const price = getPhotobookPrice(
-    settings,
-    project.size_cm,
-    project.page_count,
-    project.hardcover,
-  );
+
+  // For an ordered project, the customer already paid a specific
+  // unit_price that by construction includes pasta dura if it applied.
+  // Prefer that over recomputing from settings — config might have
+  // changed since the order.
+  const supabase = await createClient();
+  const { data: orderItemRow } = await supabase
+    .from("order_items")
+    .select("unit_price")
+    .filter("customization->>photobook_project_id", "eq", project.id)
+    .limit(1)
+    .maybeSingle();
+  const historicalPrice = orderItemRow
+    ? Number(orderItemRow.unit_price)
+    : null;
+  const price =
+    historicalPrice ??
+    getPhotobookPrice(
+      settings,
+      project.size_cm,
+      project.page_count,
+      project.hardcover,
+    );
   const existingSheets = project.print_sheets
     ? await getPrintSheetUrls(project.print_sheets)
     : [];
@@ -78,6 +96,11 @@ export default async function AdminPhotobookDetailPage({
           <p className="text-sm text-muted-foreground">
             {project.size_cm}×{project.size_cm} cm · {project.page_count} páginas ·
             {" "}{filledPages.length} fotos · {formatMXN(price)}
+            {historicalPrice !== null ? (
+              <span className="ml-1 text-xs text-muted-foreground/70">
+                (precio pagado)
+              </span>
+            ) : null}
           </p>
           <p className="text-xs text-muted-foreground font-mono">
             ID: {project.id}
