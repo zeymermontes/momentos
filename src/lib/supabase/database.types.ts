@@ -556,6 +556,26 @@ export interface Database {
           created_at?: string;
         }
       >;
+      order_email_log: Table<
+        {
+          id: string;
+          order_id: string;
+          email_type: string;
+          recipient: string | null;
+          success: boolean;
+          error: string | null;
+          created_at: string;
+        },
+        {
+          id?: string;
+          order_id: string;
+          email_type: string;
+          recipient?: string | null;
+          success: boolean;
+          error?: string | null;
+          created_at?: string;
+        }
+      >;
       promotion_rules: Table<
         {
           id: string;

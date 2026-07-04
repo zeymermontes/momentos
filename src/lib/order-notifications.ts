@@ -8,6 +8,7 @@ import {
   type OrderEmailShipTo,
   type BranchScheduleLine,
 } from "@/lib/email";
+import { logOrderEmail, type OrderEmailType } from "@/lib/order-email-log";
 
 /**
  * Each of these helpers should only be called from the code path that
@@ -49,15 +50,49 @@ async function loadOrderForEmail(orderId: string) {
       .eq("order_id", orderId),
   ]);
 
-  const email = user?.user?.email ?? null;
-  if (!email) return null;
-
   return {
     order,
-    email,
+    // Nullable: caller decides how to log a customer with no email.
+    email: user?.user?.email ?? null,
     name: profile?.full_name ?? null,
     items: (items ?? []) as OrderEmailItem[],
   };
+}
+
+/**
+ * Send outcome → NotifyResult, recording the attempt on the order's
+ * email log along the way (visible in the admin timeline).
+ */
+async function settle(
+  orderId: string,
+  type: OrderEmailType,
+  to: string,
+  result: { ok: boolean; reason?: string },
+): Promise<NotifyResult> {
+  await logOrderEmail({
+    orderId,
+    type,
+    recipient: to,
+    success: result.ok,
+    error: result.ok ? null : result.reason ?? "unknown",
+  });
+  return result.ok
+    ? { sent: true, to }
+    : { sent: false, reason: result.reason ?? "unknown" };
+}
+
+async function settleNoEmail(
+  orderId: string,
+  type: OrderEmailType,
+): Promise<NotifyResult> {
+  await logOrderEmail({
+    orderId,
+    type,
+    recipient: null,
+    success: false,
+    error: "no_email",
+  });
+  return { sent: false, reason: "no_email" };
 }
 
 function shipToFromSnapshot(snapshot: unknown): OrderEmailShipTo | null {
@@ -78,7 +113,8 @@ function shipToFromSnapshot(snapshot: unknown): OrderEmailShipTo | null {
 export async function notifyOrderPaid(orderId: string): Promise<NotifyResult> {
   try {
     const data = await loadOrderForEmail(orderId);
-    if (!data) return { sent: false, reason: "no_email" };
+    if (!data) return { sent: false, reason: "order_not_found" };
+    if (!data.email) return settleNoEmail(orderId, "order_paid");
 
     let branchName: string | null = null;
     if (data.order.fulfillment === "pickup" && data.order.branch_id) {
@@ -109,12 +145,18 @@ export async function notifyOrderPaid(orderId: string): Promise<NotifyResult> {
           : null,
       branchName,
     });
-    return result.ok
-      ? { sent: true, to: data.email }
-      : { sent: false, reason: result.reason ?? "unknown" };
+    return settle(orderId, "order_paid", data.email, result);
   } catch (e) {
     console.error("[notifyOrderPaid] failed:", e);
-    return { sent: false, reason: e instanceof Error ? e.message : "unknown" };
+    const reason = e instanceof Error ? e.message : "unknown";
+    await logOrderEmail({
+      orderId,
+      type: "order_paid",
+      recipient: null,
+      success: false,
+      error: reason,
+    });
+    return { sent: false, reason };
   }
 }
 
@@ -129,7 +171,8 @@ const CARRIER_TRACKING_URLS: Record<string, (n: string) => string> = {
 export async function notifyOrderShipped(orderId: string): Promise<NotifyResult> {
   try {
     const data = await loadOrderForEmail(orderId);
-    if (!data) return { sent: false, reason: "no_email" };
+    if (!data) return { sent: false, reason: "order_not_found" };
+    if (!data.email) return settleNoEmail(orderId, "order_shipped");
     const carrier = data.order.carrier;
     const trackingNumber = data.order.tracking_number;
     const trackingUrl =
@@ -144,19 +187,26 @@ export async function notifyOrderShipped(orderId: string): Promise<NotifyResult>
       trackingNumber,
       trackingUrl,
     });
-    return result.ok
-      ? { sent: true, to: data.email }
-      : { sent: false, reason: result.reason ?? "unknown" };
+    return settle(orderId, "order_shipped", data.email, result);
   } catch (e) {
     console.error("[notifyOrderShipped] failed:", e);
-    return { sent: false, reason: e instanceof Error ? e.message : "unknown" };
+    const reason = e instanceof Error ? e.message : "unknown";
+    await logOrderEmail({
+      orderId,
+      type: "order_shipped",
+      recipient: null,
+      success: false,
+      error: reason,
+    });
+    return { sent: false, reason };
   }
 }
 
 export async function notifyOrderReady(orderId: string): Promise<NotifyResult> {
   try {
     const data = await loadOrderForEmail(orderId);
-    if (!data) return { sent: false, reason: "no_email" };
+    if (!data) return { sent: false, reason: "order_not_found" };
+    if (!data.email) return settleNoEmail(orderId, "order_ready");
     const admin = createAdminClient();
     let branchName: string | null = null;
     let branchAddress: string | null = null;
@@ -194,11 +244,17 @@ export async function notifyOrderReady(orderId: string): Promise<NotifyResult> {
       branchSchedule,
       branchHours,
     });
-    return result.ok
-      ? { sent: true, to: data.email }
-      : { sent: false, reason: result.reason ?? "unknown" };
+    return settle(orderId, "order_ready", data.email, result);
   } catch (e) {
     console.error("[notifyOrderReady] failed:", e);
-    return { sent: false, reason: e instanceof Error ? e.message : "unknown" };
+    const reason = e instanceof Error ? e.message : "unknown";
+    await logOrderEmail({
+      orderId,
+      type: "order_ready",
+      recipient: null,
+      success: false,
+      error: reason,
+    });
+    return { sent: false, reason };
   }
 }

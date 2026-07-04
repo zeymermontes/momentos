@@ -242,14 +242,16 @@ function button(label: string, href: string): string {
 // Gift card delivery email (to recipient)
 // ============================================================
 
-export async function sendGiftCardEmail(card: GiftCard): Promise<void> {
-  if (!card.recipient_email) return;
+export async function sendGiftCardEmail(
+  card: GiftCard,
+): Promise<SendEmailResult> {
+  if (!card.recipient_email) return { ok: false, reason: "no_recipient" };
   const contact = await loadContact();
   const subject = `${
     card.sender_name ? `${card.sender_name} te envió` : "Tienes"
   } una gift card de Momentos`;
   const html = renderGiftCardEmail(card, contact);
-  await sendEmail({ to: card.recipient_email, subject, html });
+  return sendEmail({ to: card.recipient_email, subject, html });
 }
 
 function renderGiftCardEmail(card: GiftCard, contact: EmailContact): string {
@@ -321,8 +323,8 @@ export async function sendBuyerGiftCardConfirmation(args: {
   buyerName: string | null;
   orderId: string;
   cards: BuyerGiftCardIssued[];
-}): Promise<void> {
-  if (!args.cards.length) return;
+}): Promise<SendEmailResult> {
+  if (!args.cards.length) return { ok: false, reason: "no_cards" };
   const contact = await loadContact();
   const count = args.cards.length;
   const subject =
@@ -330,7 +332,7 @@ export async function sendBuyerGiftCardConfirmation(args: {
       ? "¡Tu gift card está en camino!"
       : `¡Tus ${count} gift cards están en camino!`;
   const html = renderBuyerConfirmationEmail(args, contact);
-  await sendEmail({ to: args.buyerEmail, subject, html });
+  return sendEmail({ to: args.buyerEmail, subject, html });
 }
 
 function renderBuyerConfirmationEmail(

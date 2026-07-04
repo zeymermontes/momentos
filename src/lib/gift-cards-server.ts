@@ -12,6 +12,7 @@ import {
   normalizeCode,
   parseGiftCardPurchasePayload,
 } from "@/lib/gift-cards";
+import { logOrderEmail } from "@/lib/order-email-log";
 
 const SELECT_COLS =
   "id, code, initial_amount, balance, recipient_email, recipient_name, sender_name, message, expires_at, active";
@@ -195,16 +196,32 @@ export async function issueGiftCardForOrderItem(input: {
       `[gift-cards] dispatching recipient email → card=${card.id} code=${card.code} to="${card.recipient_email ?? "(none)"}"`,
     );
     try {
-      await sendGiftCardEmail(card);
-      await admin
-        .from("gift_cards")
-        .update({ delivered_at: new Date().toISOString() })
-        .eq("id", card.id);
+      const result = await sendGiftCardEmail(card);
+      await logOrderEmail({
+        orderId: input.orderId,
+        type: "gift_card_recipient",
+        recipient: card.recipient_email,
+        success: result.ok,
+        error: result.ok ? null : result.reason ?? "unknown",
+      });
+      if (result.ok) {
+        await admin
+          .from("gift_cards")
+          .update({ delivered_at: new Date().toISOString() })
+          .eq("id", card.id);
+      }
     } catch (e) {
       console.error(
         `[gift-cards] email delivery failed for card ${card.id}:`,
         e,
       );
+      await logOrderEmail({
+        orderId: input.orderId,
+        type: "gift_card_recipient",
+        recipient: card.recipient_email,
+        success: false,
+        error: e instanceof Error ? e.message : "unknown",
+      });
     }
   } else {
     console.info(
@@ -338,17 +355,31 @@ export async function issueGiftCardsForPaidOrder(
       `[gift-cards] dispatching buyer confirmation → to="${buyerEmail}" cards=${newlyIssued.length}`,
     );
     try {
-      await sendBuyerGiftCardConfirmation({
+      const result = await sendBuyerGiftCardConfirmation({
         buyerEmail,
         buyerName,
         orderId: order.id,
         cards: newlyIssued,
+      });
+      await logOrderEmail({
+        orderId: order.id,
+        type: "gift_card_buyer",
+        recipient: buyerEmail,
+        success: result.ok,
+        error: result.ok ? null : result.reason ?? "unknown",
       });
     } catch (e) {
       console.error(
         "[gift-cards] buyer confirmation email failed:",
         e,
       );
+      await logOrderEmail({
+        orderId: order.id,
+        type: "gift_card_buyer",
+        recipient: buyerEmail,
+        success: false,
+        error: e instanceof Error ? e.message : "unknown",
+      });
     }
   } else if (newlyIssued.length > 0 && !buyerEmail) {
     console.warn(

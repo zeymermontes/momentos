@@ -281,7 +281,7 @@ export default async function AdminOrderDetailPage({
             </CardContent>
           </Card>
 
-          <OrderStatusHistory orderId={order.id} />
+          <OrderStatusHistory orderId={order.id} showEmails />
         </div>
 
         <div className="space-y-4 lg:sticky lg:top-24 lg:self-start">
