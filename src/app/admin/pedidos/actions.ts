@@ -40,7 +40,27 @@ export type OrderActionState = {
   errors?: Record<string, string[] | undefined>;
   message?: string;
   ok?: boolean;
+  /**
+   * Outcome of the customer email triggered by a status change (paid /
+   * shipped / ready). Separate from `message` so the UI can show the DB
+   * update as success and the email as its own sent/failed notice.
+   */
+  emailNotice?: { sent: boolean; detail: string };
 };
+
+const STATUS_EMAIL_LABEL: Record<string, string> = {
+  paid: "Confirmación de pedido",
+  shipped: "Pedido en camino",
+  ready: "Listo para recoger",
+};
+
+function describeEmailFailure(reason: string): string {
+  if (reason === "no_api_key")
+    return "el servicio de correo no está configurado (RESEND_API_KEY).";
+  if (reason === "no_email")
+    return "el pedido no tiene un correo de cliente asociado.";
+  return reason;
+}
 
 export async function updateOrderStatusAction(
   orderId: string,
@@ -135,24 +155,45 @@ export async function updateOrderStatusAction(
 
     // Customer notifications. Only on real transitions so re-saving the same
     // status doesn't spam the inbox. notifyOrderPaid stays within
-    // becomingPaid only (other paths fire that one too).
+    // becomingPaid only (other paths fire that one too). The outcome is
+    // surfaced to the admin via `emailNotice` — a failed email must not
+    // look like a silently-successful one.
+    let emailNotice: OrderActionState["emailNotice"];
     if (realTransition) {
       const newStatus = parsed.data.status;
+      const label = STATUS_EMAIL_LABEL[newStatus];
       try {
         const {
           notifyOrderPaid,
           notifyOrderShipped,
           notifyOrderReady,
         } = await import("@/lib/order-notifications");
+        let result: import("@/lib/order-notifications").NotifyResult | null =
+          null;
         if (newStatus === "paid" && becomingPaid) {
-          await notifyOrderPaid(orderId);
+          result = await notifyOrderPaid(orderId);
         } else if (newStatus === "shipped") {
-          await notifyOrderShipped(orderId);
+          result = await notifyOrderShipped(orderId);
         } else if (newStatus === "ready") {
-          await notifyOrderReady(orderId);
+          result = await notifyOrderReady(orderId);
+        }
+        if (result) {
+          emailNotice = result.sent
+            ? {
+                sent: true,
+                detail: `Correo "${label}" enviado a ${result.to}.`,
+              }
+            : {
+                sent: false,
+                detail: `El correo "${label}" NO se envió: ${describeEmailFailure(result.reason)}`,
+              };
         }
       } catch (e) {
         console.error("[admin/pedidos] notification failed:", e);
+        emailNotice = {
+          sent: false,
+          detail: `El correo "${label ?? "al cliente"}" NO se pudo enviar. Revisa los logs.`,
+        };
       }
     }
 
@@ -160,7 +201,7 @@ export async function updateOrderStatusAction(
     revalidatePath(`/admin/pedidos/${orderId}`);
     revalidatePath("/mi-cuenta/pedidos");
     revalidatePath(`/mi-cuenta/pedidos/${orderId}`);
-    return { ok: true, message: "Estado actualizado." };
+    return { ok: true, message: "Estado actualizado.", emailNotice };
   });
 }
 

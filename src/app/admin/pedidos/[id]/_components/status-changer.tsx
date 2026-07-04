@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { Check, Truck } from "lucide-react";
+import { Check, MailCheck, MailWarning, Truck } from "lucide-react";
 import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -125,6 +125,23 @@ export function StatusChanger({
           }
         >
           {state.message}
+        </p>
+      ) : null}
+
+      {state?.emailNotice ? (
+        <p
+          className={
+            state.emailNotice.sent
+              ? "flex items-start gap-1.5 rounded-md bg-emerald-100 p-2 text-xs text-emerald-900"
+              : "flex items-start gap-1.5 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs font-medium text-amber-900"
+          }
+        >
+          {state.emailNotice.sent ? (
+            <MailCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          ) : (
+            <MailWarning className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          )}
+          {state.emailNotice.detail}
         </p>
       ) : null}
 

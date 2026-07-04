@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { mergeGuestCartIntoUser } from "@/lib/cart";
+import { MxPhoneSchema } from "@/lib/phone";
 import { env } from "@/lib/env";
 
 const LoginSchema = z.object({
@@ -14,6 +15,8 @@ const LoginSchema = z.object({
 
 const SignupSchema = z.object({
   full_name: z.string().min(2, "Ingresa tu nombre"),
+  // Required so we can reach the customer by WhatsApp about their orders.
+  phone: MxPhoneSchema,
   email: z.string().email("Correo inválido"),
   password: z
     .string()
@@ -75,6 +78,7 @@ export async function signupAction(
 ): Promise<AuthState> {
   const parsed = SignupSchema.safeParse({
     full_name: formData.get("full_name"),
+    phone: formData.get("phone"),
     email: formData.get("email"),
     password: formData.get("password"),
   });
@@ -83,11 +87,13 @@ export async function signupAction(
   }
 
   const supabase = await createClient();
+  // phone rides in the metadata; the handle_new_user trigger copies it
+  // into profiles.phone (migration 0030).
   const { error } = await supabase.auth.signUp({
     email: parsed.data.email,
     password: parsed.data.password,
     options: {
-      data: { full_name: parsed.data.full_name },
+      data: { full_name: parsed.data.full_name, phone: parsed.data.phone },
       emailRedirectTo: `${env.SITE_URL}/auth/callback`,
     },
   });

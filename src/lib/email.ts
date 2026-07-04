@@ -105,12 +105,14 @@ function getClient(): Resend | null {
   return cachedClient;
 }
 
+export type SendEmailResult = { ok: boolean; id?: string; reason?: string };
+
 export async function sendEmail(args: {
   to: string;
   subject: string;
   html: string;
   text?: string;
-}): Promise<{ ok: boolean; id?: string; reason?: string }> {
+}): Promise<SendEmailResult> {
   const client = getClient();
   if (!client) {
     console.warn(
@@ -483,19 +485,37 @@ export type OrderEmailItem = {
   unit_price: number;
 };
 
+export type OrderEmailTotals = {
+  subtotal: number;
+  discount: number;
+  shipping: number;
+  giftCard: number;
+  total: number;
+};
+
+export type OrderEmailShipTo = {
+  recipient: string | null;
+  lines: string[];
+  phone: string | null;
+};
+
 export async function sendOrderPaidEmail(args: {
   to: string;
   name: string | null;
   orderId: string;
   items: OrderEmailItem[];
-  total: number;
+  totals: OrderEmailTotals;
   fulfillment: "ship" | "pickup" | "digital";
-}): Promise<void> {
+  /** Snapshot of the shipping address — only for fulfillment "ship". */
+  shipTo: OrderEmailShipTo | null;
+  /** Pickup branch name — only for fulfillment "pickup". */
+  branchName: string | null;
+}): Promise<SendEmailResult> {
   const contact = await loadContact();
   const html = renderOrderPaidEmail(args, contact);
-  await sendEmail({
+  return sendEmail({
     to: args.to,
-    subject: `¡Recibimos tu pago! Pedido #${args.orderId.slice(0, 8)}`,
+    subject: `✅ Confirmación de tu pedido #${args.orderId.slice(0, 8)}`,
     html,
   });
 }
@@ -505,8 +525,10 @@ function renderOrderPaidEmail(
     name: string | null;
     orderId: string;
     items: OrderEmailItem[];
-    total: number;
+    totals: OrderEmailTotals;
     fulfillment: "ship" | "pickup" | "digital";
+    shipTo: OrderEmailShipTo | null;
+    branchName: string | null;
   },
   contact: EmailContact,
 ): string {
@@ -536,22 +558,59 @@ function renderOrderPaidEmail(
         ? "Tu pedido entró en producción. Te avisamos cuando esté listo para recoger en sucursal."
         : "Tu pedido entró en producción. Te enviaremos otro correo con el número de guía cuando salga a tu domicilio.";
 
+  const t = args.totals;
+  const summaryRow = (label: string, value: string, accent = false) => `<tr>
+    <td style="padding:4px 0;font-size:13px;color:${accent ? "#059669" : "#525252"};">${label}</td>
+    <td style="padding:4px 0;font-size:13px;font-weight:600;text-align:right;color:${accent ? "#059669" : "#0a0a0a"};">${value}</td>
+  </tr>`;
+  const totalsRows = [
+    summaryRow("Subtotal", formatPeso(t.subtotal)),
+    t.discount > 0 ? summaryRow("Descuentos", `-${formatPeso(t.discount)}`, true) : "",
+    args.fulfillment === "ship"
+      ? summaryRow("Envío", t.shipping === 0 ? "Gratis" : formatPeso(t.shipping))
+      : args.fulfillment === "pickup"
+        ? summaryRow("Envío", "Recoger en sucursal")
+        : "",
+    t.giftCard > 0 ? summaryRow("Gift card", `-${formatPeso(t.giftCard)}`, true) : "",
+  ].join("");
+
+  const shipToBlock =
+    args.fulfillment === "ship" && args.shipTo
+      ? `<div style="margin:24px 0 0 0;padding:16px 18px;background:#fdf2f8;border-radius:12px;border-left:4px solid #F272b3;">
+          <p style="margin:0 0 6px 0;font-size:11px;font-weight:700;color:#F272b3;letter-spacing:0.06em;text-transform:uppercase;">Se enviará a</p>
+          ${args.shipTo.recipient ? `<p style="margin:0 0 2px 0;font-size:14px;font-weight:700;color:#0a0a0a;">${escapeHtml(args.shipTo.recipient)}</p>` : ""}
+          ${args.shipTo.lines.map((l) => `<p style="margin:0;font-size:13px;color:#3f3f46;line-height:1.5;">${escapeHtml(l)}</p>`).join("")}
+          ${args.shipTo.phone ? `<p style="margin:6px 0 0 0;font-size:12px;color:#71717a;">Tel. ${escapeHtml(args.shipTo.phone)}</p>` : ""}
+        </div>`
+      : args.fulfillment === "pickup" && args.branchName
+        ? `<div style="margin:24px 0 0 0;padding:16px 18px;background:#fdf2f8;border-radius:12px;border-left:4px solid #F272b3;">
+            <p style="margin:0 0 6px 0;font-size:11px;font-weight:700;color:#F272b3;letter-spacing:0.06em;text-transform:uppercase;">Recoger en sucursal</p>
+            <p style="margin:0;font-size:14px;font-weight:700;color:#0a0a0a;">${escapeHtml(args.branchName)}</p>
+          </div>`
+        : "";
+
   const body = `
     <p style="margin:0 0 6px 0;font-size:15px;color:#525252;">${greeting}</p>
     <h1 style="margin:0 0 8px 0;font-size:24px;font-weight:800;line-height:1.2;color:#0a0a0a;">
-      Recibimos tu pago ✅
+      Confirmamos tu pedido ✅
     </h1>
     <p style="margin:0 0 24px 0;font-size:14px;color:#3f3f46;line-height:1.5;">
-      Pedido ${orderChip(orderShort)}
+      Recibimos tu pago del pedido ${orderChip(orderShort)}. Aquí está el detalle:
     </p>
 
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;margin-bottom:8px;">
       ${rows}
+    </table>
+
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;margin:12px 0 0 0;">
+      ${totalsRows}
       <tr>
-        <td style="padding:16px 0 0 0;font-size:13px;color:#525252;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;">Total</td>
-        <td style="padding:16px 0 0 0;font-size:18px;font-weight:800;text-align:right;color:#F272b3;">${formatPeso(args.total)}</td>
+        <td style="padding:12px 0 0 0;font-size:13px;color:#525252;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;border-top:1px solid #fce7f3;">Total pagado</td>
+        <td style="padding:12px 0 0 0;font-size:18px;font-weight:800;text-align:right;color:#F272b3;border-top:1px solid #fce7f3;">${formatPeso(t.total)}</td>
       </tr>
     </table>
+
+    ${shipToBlock}
 
     <p style="margin:24px 0 0 0;font-size:14px;color:#3f3f46;line-height:1.5;">${nextStep}</p>
 
@@ -563,8 +622,8 @@ function renderOrderPaidEmail(
   `;
 
   return shell({
-    preheader: `Pago confirmado — pedido #${orderShort}`,
-    title: "Pago recibido",
+    preheader: `Pedido #${orderShort} confirmado — total ${formatPeso(t.total)}`,
+    title: "Confirmación de tu pedido",
     bodyHtml: body,
     contact,
   });
@@ -581,10 +640,10 @@ export async function sendOrderShippedEmail(args: {
   carrier: string | null;
   trackingNumber: string | null;
   trackingUrl: string | null;
-}): Promise<void> {
+}): Promise<SendEmailResult> {
   const contact = await loadContact();
   const html = renderOrderShippedEmail(args, contact);
-  await sendEmail({
+  return sendEmail({
     to: args.to,
     subject: `📦 ¡Tu pedido va en camino! #${args.orderId.slice(0, 8)}`,
     html,
@@ -667,10 +726,10 @@ export async function sendOrderReadyEmail(args: {
    * `branchSchedule` is present.
    */
   branchHours: string | null;
-}): Promise<void> {
+}): Promise<SendEmailResult> {
   const contact = await loadContact();
   const html = renderOrderReadyEmail(args, contact);
-  await sendEmail({
+  return sendEmail({
     to: args.to,
     subject: `🎁 Tu pedido está listo para recoger #${args.orderId.slice(0, 8)}`,
     html,

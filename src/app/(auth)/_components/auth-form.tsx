@@ -41,13 +41,25 @@ export function AuthForm({ mode }: { mode: Mode }) {
   return (
     <form action={formAction} className="mt-6 space-y-4">
       {mode === "signup" ? (
-        <Field
-          name="full_name"
-          label="Nombre completo"
-          autoComplete="name"
-          required
-          error={fieldErrors?.full_name?.[0]}
-        />
+        <>
+          <Field
+            name="full_name"
+            label="Nombre completo"
+            autoComplete="name"
+            required
+            error={fieldErrors?.full_name?.[0]}
+          />
+          <Field
+            name="phone"
+            label="Celular (WhatsApp)"
+            type="tel"
+            autoComplete="tel"
+            placeholder="10 dígitos, ej. 667 123 4567"
+            hint="Lo usamos para contactarte por WhatsApp si hay dudas con tu pedido."
+            required
+            error={fieldErrors?.phone?.[0]}
+          />
+        </>
       ) : null}
 
       <Field
@@ -100,6 +112,8 @@ function Field({
   label,
   type = "text",
   autoComplete,
+  placeholder,
+  hint,
   required,
   error,
 }: {
@@ -107,6 +121,8 @@ function Field({
   label: string;
   type?: string;
   autoComplete?: string;
+  placeholder?: string;
+  hint?: string;
   required?: boolean;
   error?: string;
 }) {
@@ -118,8 +134,12 @@ function Field({
         name={name}
         type={type}
         autoComplete={autoComplete}
+        placeholder={placeholder}
         required={required}
       />
+      {hint && !error ? (
+        <p className="text-xs text-muted-foreground">{hint}</p>
+      ) : null}
       {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </div>
   );

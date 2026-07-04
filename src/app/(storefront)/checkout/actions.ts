@@ -36,6 +36,7 @@ import {
   redeemPendingGiftCardForOrder,
   issueGiftCardsForPaidOrder,
 } from "@/lib/gift-cards-server";
+import { MxPhoneSchema } from "@/lib/phone";
 import type { Json } from "@/lib/supabase/database.types";
 
 const SHIPPING_FLAT_MXN = 100;
@@ -99,6 +100,31 @@ export async function createOrderAction(
     }
 
     const { supabase, user } = await requireUser();
+
+    // We need a phone on file to reach the customer by WhatsApp if
+    // something comes up with their order. Accounts created before the
+    // phone became required at signup may not have one — in that case the
+    // checkout form shows a phone field and we persist it to the profile.
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("phone")
+      .eq("id", user.id)
+      .maybeSingle();
+    if (!profile?.phone) {
+      const parsedPhone = MxPhoneSchema.safeParse(formData.get("phone"));
+      if (!parsedPhone.success) {
+        return {
+          errors: {
+            phone: ["Ingresa un teléfono de 10 dígitos para poder contactarte"],
+          },
+        };
+      }
+      const { error: phoneErr } = await supabase
+        .from("profiles")
+        .update({ phone: parsedPhone.data })
+        .eq("id", user.id);
+      if (phoneErr) return { message: phoneErr.message };
+    }
 
     const cart = await getCart();
     if (!cart) return { message: "Tu carrito está vacío." };
@@ -401,6 +427,14 @@ export async function createOrderAction(
         await issueGiftCardsForPaidOrder(order.id);
       } catch (e) {
         console.error("[checkout] gift card issuance failed:", e);
+      }
+      // This path never touches MercadoPago, so neither the webhook nor
+      // /checkout/success will fire the paid confirmation — send it here.
+      try {
+        const { notifyOrderPaid } = await import("@/lib/order-notifications");
+        await notifyOrderPaid(order.id);
+      } catch (e) {
+        console.error("[checkout] notifyOrderPaid failed:", e);
       }
       await clearUserCart();
       revalidatePath("/carrito");

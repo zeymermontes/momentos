@@ -47,6 +47,7 @@ export default async function CheckoutPage() {
     { data: branches },
     { data: extraCategoryLinks },
     promotionRules,
+    { data: profile },
   ] = await Promise.all([
     supabase
       .from("addresses")
@@ -67,6 +68,7 @@ export default async function CheckoutPage() {
         items.map((i) => i.product_id).filter(Boolean) as string[],
       ),
     getActivePromotionRules(),
+    supabase.from("profiles").select("phone").eq("id", user.id).maybeSingle(),
   ]);
 
 
@@ -115,6 +117,7 @@ export default async function CheckoutPage() {
           addresses={addresses ?? []}
           branches={branches ?? []}
           promotionRules={promotionRules}
+          needsPhone={!profile?.phone}
         />
       </div>
     </div>

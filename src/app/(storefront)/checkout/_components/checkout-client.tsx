@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Truck, Store, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -69,6 +70,8 @@ type Props = {
   addresses: Address[];
   branches: Branch[];
   promotionRules: PromotionRule[];
+  /** True when the profile has no phone yet — the form collects one. */
+  needsPhone: boolean;
 };
 
 export function CheckoutClient({
@@ -76,6 +79,7 @@ export function CheckoutClient({
   addresses,
   branches,
   promotionRules,
+  needsPhone,
 }: Props) {
   const [state, formAction] = useActionState<
     CreateOrderState | undefined,
@@ -218,10 +222,11 @@ export function CheckoutClient({
 
       <div
         className={cn(
-          "lg:col-start-1",
+          "space-y-6 lg:col-start-1",
           allDigital ? "lg:row-start-1" : "lg:row-start-2",
         )}
       >
+        {needsPhone ? <PhoneSection state={state} /> : null}
         <ContinueButton
           disabled={
             (fulfillment === "ship" && !addressId) ||
@@ -384,6 +389,33 @@ function ShippingFields({
       ) : null}
 
     </>
+  );
+}
+
+function PhoneSection({ state }: { state: CreateOrderState | undefined }) {
+  return (
+    <section className="space-y-3">
+      <h2 className="text-lg font-semibold">Teléfono de contacto</h2>
+      <div className="grid gap-1.5">
+        <Label htmlFor="checkout-phone">Celular (WhatsApp)</Label>
+        <Input
+          id="checkout-phone"
+          name="phone"
+          type="tel"
+          inputMode="tel"
+          autoComplete="tel"
+          required
+          placeholder="Ej. 667 123 4567"
+        />
+        <p className="text-xs text-muted-foreground">
+          Lo usamos para contactarte por WhatsApp si surge alguna duda con tu
+          pedido. Se guarda en tu perfil.
+        </p>
+        {state?.errors?.phone?.[0] ? (
+          <p className="text-xs text-destructive">{state.errors.phone[0]}</p>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
