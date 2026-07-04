@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { Check, MailCheck, MailWarning, Truck } from "lucide-react";
 import { Select } from "@/components/ui/select";
@@ -46,11 +46,23 @@ export function StatusChanger({
   const [status, setStatus] = useState<string>(currentStatus);
   const needsTracking = status === "shipped" || status === "delivered";
 
+  // React 19 auto-resets the form when the action settles, which snaps the
+  // native <select> back to its first option in the DOM. Our controlled
+  // `status` didn't change, so React skips the DOM write and the dropdown
+  // shows the wrong value even though the order was updated. Re-assert it.
+  const selectRef = useRef<HTMLSelectElement>(null);
+  useEffect(() => {
+    if (selectRef.current && selectRef.current.value !== status) {
+      selectRef.current.value = status;
+    }
+  }, [state, status]);
+
   return (
     <form action={formAction} className="space-y-3">
       <div className="grid gap-1.5">
         <Label htmlFor="status">Cambiar estado</Label>
         <Select
+          ref={selectRef}
           id="status"
           name="status"
           value={status}
