@@ -1,9 +1,21 @@
 import { Fragment } from "react";
 import Link from "next/link";
-import { ArrowRight, BookOpen, Check, Sparkles, Store, Truck, Upload } from "lucide-react";
+import {
+  ArrowRight,
+  BookOpen,
+  Camera,
+  Check,
+  Heart,
+  Image as ImageIcon,
+  Sparkles,
+  Store,
+  Truck,
+  Upload,
+} from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn, formatMXN } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/server";
+import { getPhotobookSettings } from "@/lib/photobook";
 import type { HomeSectionType } from "@/lib/supabase/database.types";
 import {
   LandingCarousel,
@@ -56,6 +68,8 @@ type PreloadedData = {
   products: FeaturedProduct[];
   /** Carousel slides keyed by their owning `home_section_id`. */
   carouselsBySection: Map<string, CarouselSlide[]>;
+  /** Photobook flow availability + cheapest configured price (for "Desde $X"). */
+  photobook: { enabled: boolean; fromPrice: number | null };
 };
 
 // ============================================================
@@ -121,6 +135,8 @@ export default async function HomePage() {
   const fallbackNeedsHero = noConfig || needsHero;
   const fallbackCategoriesCount = noConfig ? 6 : maxCategories;
   const fallbackProductsCount = noConfig ? 8 : maxProducts;
+  const needsPhotobook =
+    noConfig || sections.some((s) => s.type === "photobook_cta");
 
   const [
     { data: heroBannersRaw },
@@ -128,6 +144,7 @@ export default async function HomePage() {
     { data: categoriesRaw },
     { data: productsRaw },
     { data: carouselBannersRaw },
+    photobookSettings,
   ] = await Promise.all([
     fallbackNeedsHero
       ? supabase
@@ -176,7 +193,19 @@ export default async function HomePage() {
       : Promise.resolve({
           data: [] as Array<Banner & { home_section_id: string | null }>,
         }),
+    needsPhotobook ? getPhotobookSettings() : Promise.resolve(null),
   ]);
+
+  // Cheapest soft-cover combination across all sizes — powers the "Desde $X"
+  // label. Null when photobooks are disabled or nothing is priced yet.
+  const photobookPrices = (photobookSettings?.sizes ?? [])
+    .flatMap((s) => Object.values(s.prices ?? {}))
+    .map(Number)
+    .filter((p) => Number.isFinite(p) && p > 0);
+  const photobook = {
+    enabled: photobookSettings?.enabled ?? false,
+    fromPrice: photobookPrices.length > 0 ? Math.min(...photobookPrices) : null,
+  };
 
   // Bucket carousel banners by their owning section so the dispatcher can
   // look up each carousel's slides in O(1).
@@ -202,6 +231,7 @@ export default async function HomePage() {
     categories: (categoriesRaw ?? []) as Category[],
     products: (productsRaw ?? []) as FeaturedProduct[],
     carouselsBySection,
+    photobook,
   };
 
   // 3. Fallback layout if the admin hasn't configured any sections yet.
@@ -210,6 +240,13 @@ export default async function HomePage() {
       <div className="flex flex-col">
         <Hero config={{}} banner={data.heroBanners[0]} />
         <ValueProps />
+        {photobook.enabled ? (
+          <PhotobookCta
+            config={{}}
+            title={null}
+            fromPrice={photobook.fromPrice}
+          />
+        ) : null}
         <CategoryGrid categories={data.categories} />
         <FeaturedProducts products={data.products} />
         <CtaBand config={{}} />
@@ -276,7 +313,13 @@ function renderSection(section: SectionRow, data: PreloadedData) {
     case "cta_band":
       return <CtaBand config={section.config} />;
     case "photobook_cta":
-      return <PhotobookCta config={section.config} title={section.title} />;
+      return (
+        <PhotobookCta
+          config={section.config}
+          title={section.title}
+          fromPrice={data.photobook.fromPrice}
+        />
+      );
     case "carousel": {
       const slides = data.carouselsBySection.get(section.id) ?? [];
       if (slides.length === 0) return null;
@@ -541,7 +584,7 @@ function FeaturedProducts({
         <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
           {title ?? "Productos destacados"}
         </h2>
-        <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-8 grid gap-4 grid-cols-2 lg:grid-cols-4">
           {products.map((p) => {
             const imgs = Array.isArray(p.images) ? (p.images as string[]) : [];
             return (
@@ -562,9 +605,11 @@ function FeaturedProducts({
                     <GiftCardThumb showLabel />
                   ) : null}
                 </div>
-                <div className="flex flex-1 flex-col p-4">
-                  <h3 className="font-semibold leading-tight">{p.name}</h3>
-                  <p className="mt-auto pt-2 text-lg font-bold">
+                <div className="flex flex-1 flex-col p-3">
+                  <h3 className="text-sm font-semibold leading-tight">
+                    {p.name}
+                  </h3>
+                  <p className="mt-auto pt-1.5 text-base font-bold">
                     {p.is_gift_card
                       ? "Elige el monto"
                       : formatMXN(Number(p.base_price))}
@@ -660,15 +705,19 @@ function CustomHtml({ html }: { html: string }) {
  * other, optional starting price, optional 3-feature checklist, and a CTA
  * button (defaults to `/fotolibro`).
  *
- * Falls back to a pink-gradient placeholder when the admin hasn't uploaded
- * an image. The image_position config flips left/right.
+ * Falls back to a CSS photobook mockup when the admin hasn't uploaded an
+ * image. The image_position config flips left/right. `fromPrice` (cheapest
+ * configured combination) backs the "Desde $X" label when the admin didn't
+ * set an explicit starting_price.
  */
 function PhotobookCta({
   config,
   title: rowTitle,
+  fromPrice = null,
 }: {
   config: Record<string, unknown>;
   title: string | null;
+  fromPrice?: number | null;
 }) {
   const str = (k: string): string | undefined => {
     const v = config[k];
@@ -684,17 +733,24 @@ function PhotobookCta({
     str("title") ?? rowTitle ?? "Crea tu fotolibro personalizado";
   const subtitle =
     str("subtitle") ??
-    "Diseña en línea con preview en vivo, elige tu tamaño y recibe tu libro impreso en alta calidad.";
+    "Sube tus fotos, acomódalas a tu gusto con preview en vivo y recibe un libro impreso en alta calidad que guarda tus mejores momentos.";
   const imageUrl = str("image_url");
-  const startingPrice = num("starting_price");
-  const buttonLabel = str("button_label") ?? "Empezar mi fotolibro";
+  const startingPrice = num("starting_price") ?? fromPrice;
+  const buttonLabel = str("button_label") ?? "Crear mi fotolibro";
   const buttonHref = str("button_href") ?? "/fotolibro";
   const imagePosition = config.image_position === "left" ? "left" : "right";
+  // Admin-configured sections always store a `features` array (possibly
+  // empty = deliberately hidden). Only the hardcoded fallback render
+  // (`config = {}`) gets the brand defaults.
   const features = Array.isArray(config.features)
     ? (config.features as unknown[]).filter(
         (f): f is string => typeof f === "string" && f.trim().length > 0,
       )
-    : [];
+    : [
+        "Diferentes tamaños",
+        "Editor en línea con vista previa en vivo",
+        "Impresión profesional y envío a todo México",
+      ];
 
   const textCol = (
     <div className="space-y-6">
@@ -711,24 +767,18 @@ function PhotobookCta({
         </p>
       </div>
       {features.length > 0 ? (
-        <ul className="space-y-2">
+        <ul className="space-y-2.5">
           {features.map((f) => (
-            <li key={f} className="flex items-start gap-2 text-sm">
-              <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <li key={f} className="flex items-start gap-2.5 text-sm">
+              <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary/15 text-primary">
+                <Check className="h-3 w-3" />
+              </span>
               <span>{f}</span>
             </li>
           ))}
         </ul>
       ) : null}
-      <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
-        {startingPrice !== null ? (
-          <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">
-              Desde
-            </p>
-            <p className="text-2xl font-bold">{formatMXN(startingPrice)}</p>
-          </div>
-        ) : null}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-3 pt-1">
         {buttonLabel ? (
           <Link
             href={buttonHref}
@@ -738,30 +788,84 @@ function PhotobookCta({
             <ArrowRight className="h-4 w-4" />
           </Link>
         ) : null}
+        {startingPrice !== null ? (
+          <div className="leading-tight">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+              Desde
+            </p>
+            <p className="text-2xl font-bold">{formatMXN(startingPrice)}</p>
+          </div>
+        ) : null}
       </div>
     </div>
   );
 
   const imageCol = (
-    <div className="relative aspect-square w-full overflow-hidden rounded-2xl bg-primary/10 ring-1 ring-primary/20">
-      {imageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={imageUrl}
-          alt={title}
-          className="h-full w-full object-cover"
-        />
-      ) : (
-        <div className="grid h-full w-full place-items-center bg-gradient-to-br from-primary/30 to-primary text-primary-foreground">
-          <BookOpen className="h-24 w-24 opacity-90" />
-        </div>
-      )}
+    <div className="relative hidden w-full md:block">
+      <div
+        aria-hidden
+        className="absolute -inset-4 rounded-[2rem] bg-gradient-to-br from-primary/20 via-primary/5 to-transparent blur-2xl"
+      />
+      <div className="relative aspect-square w-full overflow-hidden rounded-2xl ring-1 ring-primary/20">
+        {imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={imageUrl}
+            alt={title}
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <div className="grid h-full w-full place-items-center bg-gradient-to-br from-primary/15 via-background to-primary/25 p-8 sm:p-12">
+            {/* CSS mockup of a photobook: two stacked "pages" behind a dark
+                cover with a photo grid — keeps the block looking finished
+                until the admin uploads a real product photo. */}
+            <div className="relative aspect-square w-full max-w-[20rem]">
+              <div className="absolute inset-0 -rotate-3 rounded-xl bg-white shadow-lg ring-1 ring-black/5" />
+              <div className="absolute inset-0 -rotate-1 rounded-xl bg-white shadow-lg ring-1 ring-black/5" />
+              <div className="relative flex h-full rotate-1 flex-col overflow-hidden rounded-xl bg-secondary shadow-xl ring-1 ring-black/10">
+                <div
+                  aria-hidden
+                  className="absolute inset-y-0 left-0 w-3 bg-gradient-to-r from-black/40 to-transparent"
+                />
+                <div className="flex flex-1 flex-col justify-center gap-4 p-6 pl-9">
+                  <div className="mx-auto grid w-full max-w-[11.5rem] grid-cols-2 gap-2.5">
+                    {[Camera, Heart, ImageIcon, Sparkles].map((Icon, i) => (
+                      <div
+                        key={i}
+                        className="grid aspect-square place-items-center rounded-lg bg-gradient-to-br from-primary/70 to-primary/40"
+                      >
+                        <Icon className="h-7 w-7 text-white/85" />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-white/50">
+                      Fotolibro
+                    </p>
+                    <p className="text-lg font-black text-white">
+                      Nuestros momentos
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 
   return (
-    <section className="bg-background py-16">
-      <div className="mx-auto grid w-full max-w-7xl items-center gap-10 px-4 sm:px-6 lg:grid-cols-2 lg:px-8">
+    <section className="relative overflow-hidden border-b border-border bg-background py-16 sm:py-20">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-primary/10 blur-3xl"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -bottom-24 -left-24 h-72 w-72 rounded-full bg-primary/5 blur-3xl"
+      />
+      <div className="relative mx-auto grid w-full max-w-7xl items-center gap-10 px-4 sm:px-6 md:grid-cols-2 lg:gap-16 lg:px-8">
         {imagePosition === "left" ? (
           <>
             {imageCol}
