@@ -39,7 +39,7 @@ import {
 import { MxPhoneSchema } from "@/lib/phone";
 import type { Json } from "@/lib/supabase/database.types";
 
-const SHIPPING_FLAT_MXN = 100;
+const SHIPPING_FLAT_MXN = 150;
 
 const CheckoutSchema = z.discriminatedUnion("fulfillment", [
   z.object({

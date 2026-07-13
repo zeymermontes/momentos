@@ -27,7 +27,7 @@ import {
 import { evaluatePromotions, type PromotionRule } from "@/lib/promotions-engine";
 import { cn, formatMXN } from "@/lib/utils";
 
-const SHIPPING_FLAT_MXN = 100;
+const SHIPPING_FLAT_MXN = 150;
 
 type Address = {
   id: string;
