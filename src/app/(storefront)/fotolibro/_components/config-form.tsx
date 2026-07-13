@@ -12,8 +12,16 @@ import {
   type ActionState,
 } from "@/app/(storefront)/fotolibro/actions";
 
-export function ConfigForm({ settings }: { settings: PhotobookSettings }) {
-  const [sizeCm, setSizeCm] = useState(settings.sizes[0]?.cm ?? 20);
+export function ConfigForm({
+  settings,
+  initialSizeCm,
+}: {
+  settings: PhotobookSettings;
+  initialSizeCm?: number;
+}) {
+  const [sizeCm, setSizeCm] = useState(
+    initialSizeCm ?? settings.sizes[0]?.cm ?? 20,
+  );
   const [pageCount, setPageCount] = useState(settings.page_counts[0] ?? 20);
   const [state, formAction, pending] = useActionState<
     ActionState | undefined,

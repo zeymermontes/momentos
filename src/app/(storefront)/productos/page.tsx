@@ -1,11 +1,16 @@
 import Link from "next/link";
-import { Search, Package } from "lucide-react";
+import { ArrowRight, BookOpen, Search, Package } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/admin/empty-state";
 import { CategoryBannerCarousel } from "@/app/(storefront)/productos/_components/category-banner-carousel";
 import { createClient } from "@/lib/supabase/server";
+import { getPhotobookSettings } from "@/lib/photobook";
+import type { PhotobookSize } from "@/lib/photobook-config";
 import { formatMXN, cn } from "@/lib/utils";
+
+/** Reserved slug for the built-in photobook "category" — not a DB row. */
+const PHOTOBOOK_SLUG = "fotolibros";
 
 export const metadata = { title: "Productos" };
 export const revalidate = 60;
@@ -30,18 +35,23 @@ export default async function ProductsPage({
   const { categoria, q } = await searchParams;
   const supabase = await createClient();
 
-  const { data: rawCategories } = await supabase
-    .from("categories")
-    .select("id, slug, name, parent_id, sort_order")
-    .order("sort_order", { ascending: true })
-    .order("name", { ascending: true });
+  const [{ data: rawCategories }, photobookSettings] = await Promise.all([
+    supabase
+      .from("categories")
+      .select("id, slug, name, parent_id, sort_order")
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true }),
+    getPhotobookSettings(),
+  ]);
 
   const categories = (rawCategories ?? []) as CategoryRow[];
   const tree = buildTree(categories);
+  const photobookActive =
+    photobookSettings.enabled && categoria === PHOTOBOOK_SLUG;
 
   let activeCategory: CategoryRow | null = null;
   let categoryIds: string[] = [];
-  if (categoria) {
+  if (categoria && !photobookActive) {
     const match = categories.find((c) => c.slug === categoria);
     if (match) {
       activeCategory = match;
@@ -112,7 +122,26 @@ export default async function ProductsPage({
   }
   if (q) query = query.ilike("name", `%${q}%`);
 
-  const { data: products } = await query;
+  // The photobook pseudo-category renders its own size grid — skip the
+  // products fetch entirely.
+  const { data: products } = photobookActive ? { data: null } : await query;
+
+  // Photobook size cards also surface in the unfiltered "Todas" view (and
+  // respect the search box) so the flagship product is never hidden.
+  const photobookSizes =
+    photobookSettings.enabled && (photobookActive || !categoria)
+      ? photobookSettings.sizes.filter(
+          (s) =>
+            !q ||
+            `fotolibro ${s.label} ${s.sublabel}`
+              .toLowerCase()
+              .includes(q.toLowerCase()),
+        )
+      : [];
+  const photobookMaxCm =
+    photobookSizes.length > 0
+      ? Math.max(...photobookSizes.map((s) => s.cm))
+      : 1;
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
@@ -124,7 +153,11 @@ export default async function ProductsPage({
 
       <header className="mb-8 space-y-3">
         <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-          {activeCategory ? activeCategory.name : "Todos los productos"}
+          {photobookActive
+            ? "Fotolibros"
+            : activeCategory
+              ? activeCategory.name
+              : "Todos los productos"}
         </h1>
         <form className="relative max-w-md">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -154,6 +187,18 @@ export default async function ProductsPage({
           >
             Todas
           </Link>
+          {photobookSettings.enabled ? (
+            <Link
+              href={`/productos?categoria=${PHOTOBOOK_SLUG}`}
+              className={cn(
+                "flex items-center gap-1.5 rounded-md px-3 py-2 text-sm hover:bg-muted",
+                photobookActive && "bg-muted font-medium",
+              )}
+            >
+              <BookOpen className="h-3.5 w-3.5 text-primary" />
+              Fotolibros
+            </Link>
+          ) : null}
           {tree.map((node) => (
             <CategoryLink
               key={node.id}
@@ -165,7 +210,9 @@ export default async function ProductsPage({
         </aside>
 
         <div>
-          {(products?.length ?? 0) === 0 ? (
+          {photobookActive ? (
+            <PhotobookSizeGrid sizes={photobookSizes} maxCm={photobookMaxCm} />
+          ) : (products?.length ?? 0) === 0 && photobookSizes.length === 0 ? (
             <EmptyState
               icon={Package}
               title="No encontramos productos"
@@ -176,7 +223,14 @@ export default async function ProductsPage({
               }
             />
           ) : (
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
+              {photobookSizes.map((s) => (
+                <PhotobookSizeCard
+                  key={`pb-${s.cm}`}
+                  size={s}
+                  maxCm={photobookMaxCm}
+                />
+              ))}
               {(products ?? []).map((p) => {
                 const imgs = Array.isArray(p.images)
                   ? (p.images as string[])
@@ -205,9 +259,11 @@ export default async function ProductsPage({
                         ) : null}
                       </div>
                     </div>
-                    <div className="flex flex-1 flex-col p-4">
-                      <h3 className="font-semibold leading-tight">{p.name}</h3>
-                      <p className="mt-auto pt-2 text-lg font-bold">
+                    <div className="flex flex-1 flex-col p-3">
+                      <h3 className="text-sm font-semibold leading-tight">
+                        {p.name}
+                      </h3>
+                      <p className="mt-auto pt-1.5 text-base font-bold">
                         {formatMXN(Number(p.base_price))}
                       </p>
                     </div>
@@ -219,6 +275,99 @@ export default async function ProductsPage({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Card grid for the built-in "Fotolibros" pseudo-category: one card per
+ * configured size, each linking into the photobook flow with that size
+ * preselected (`/fotolibro?size=NN`). The cover visual scales with the
+ * physical size so the options read at a glance.
+ */
+function PhotobookSizeGrid({
+  sizes,
+  maxCm,
+}: {
+  sizes: PhotobookSize[];
+  maxCm: number;
+}) {
+  if (sizes.length === 0) {
+    return (
+      <EmptyState
+        icon={BookOpen}
+        title="Sin tamaños disponibles"
+        description="Aún no hay tamaños de fotolibro configurados."
+      />
+    );
+  }
+  return (
+    <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
+      {sizes.map((s) => (
+        <PhotobookSizeCard key={s.cm} size={s} maxCm={maxCm} />
+      ))}
+    </div>
+  );
+}
+
+function PhotobookSizeCard({
+  size: s,
+  maxCm,
+}: {
+  size: PhotobookSize;
+  maxCm: number;
+}) {
+  const prices = Object.values(s.prices ?? {})
+    .map(Number)
+    .filter((p) => Number.isFinite(p) && p > 0);
+  const from = prices.length > 0 ? Math.min(...prices) : null;
+  // Scale each cover relative to the largest size (45%–80% of the tile).
+  const coverPct = 45 + (s.cm / maxCm) * 35;
+  return (
+    <Link
+      href={`/fotolibro?size=${s.cm}`}
+      className="group flex flex-col overflow-hidden rounded-xl border border-border bg-card transition-shadow hover:shadow-md"
+    >
+      <div className="grid aspect-square w-full place-items-center overflow-hidden bg-gradient-to-br from-primary/10 via-background to-primary/20">
+        <div
+          className="relative overflow-hidden rounded-lg bg-secondary shadow-lg ring-1 ring-black/10 transition-transform duration-300 group-hover:scale-105"
+          style={{ width: `${coverPct}%`, aspectRatio: "1 / 1" }}
+        >
+          <div
+            aria-hidden
+            className="absolute inset-y-0 left-0 w-1.5 bg-gradient-to-r from-black/40 to-transparent"
+          />
+          <div className="grid h-full w-full place-items-center">
+            <div className="text-center">
+              <BookOpen className="mx-auto h-6 w-6 text-primary" />
+              <p className="mt-1 text-[10px] font-semibold tracking-wide text-white/70">
+                {s.sublabel}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="flex flex-1 flex-col p-3">
+        <h3 className="text-sm font-semibold leading-tight">
+          Fotolibro {s.label}
+        </h3>
+        <p className="text-xs text-muted-foreground">{s.sublabel}</p>
+        <div className="mt-auto flex items-end justify-between pt-1.5">
+          {from !== null ? (
+            <p className="text-base font-bold">
+              <span className="text-xs font-medium text-muted-foreground">
+                Desde{" "}
+              </span>
+              {formatMXN(from)}
+            </p>
+          ) : (
+            <p className="text-sm font-medium text-muted-foreground">
+              Configúralo a tu gusto
+            </p>
+          )}
+          <ArrowRight className="mb-1 h-4 w-4 text-primary transition-transform duration-200 group-hover:translate-x-0.5" />
+        </div>
+      </div>
+    </Link>
   );
 }
 

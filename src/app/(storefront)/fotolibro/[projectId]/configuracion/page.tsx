@@ -9,15 +9,25 @@ export const dynamic = "force-dynamic";
 
 export default async function ProjectConfigPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ projectId: string }>;
+  searchParams: Promise<{ size?: string }>;
 }) {
   const { projectId } = await params;
+  const { size } = await searchParams;
   await requireUser();
   const project = await getProject(projectId);
   if (!project) notFound();
 
   const settings = await getPhotobookSettings();
+
+  // Coming from a size card in the catalog: preselect that size in the
+  // form (the customer still has to save for it to apply to the project).
+  const requestedSize = Number(size);
+  const initialSizeCm = settings.sizes.some((s) => s.cm === requestedSize)
+    ? requestedSize
+    : undefined;
 
   return (
     <>
@@ -34,6 +44,7 @@ export default async function ProjectConfigPage({
           currentSizeCm={project.size_cm}
           currentPageCount={project.page_count}
           settings={settings}
+          initialSizeCm={initialSizeCm}
         />
       </div>
     </>

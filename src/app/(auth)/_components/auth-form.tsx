@@ -23,7 +23,7 @@ function SubmitButton({ label }: { label: string }) {
   );
 }
 
-export function AuthForm({ mode }: { mode: Mode }) {
+export function AuthForm({ mode, next }: { mode: Mode; next?: string }) {
   const action =
     mode === "login"
       ? loginAction
@@ -40,6 +40,9 @@ export function AuthForm({ mode }: { mode: Mode }) {
 
   return (
     <form action={formAction} className="mt-6 space-y-4">
+      {mode === "login" && next ? (
+        <input type="hidden" name="next" value={next} />
+      ) : null}
       {mode === "signup" ? (
         <>
           <Field

@@ -6,12 +6,24 @@ import { ConfigForm } from "./_components/config-form";
 
 export const metadata = { title: "Crear fotolibro" };
 
-export default async function PhotobookConfigPage() {
+export default async function PhotobookConfigPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ size?: string }>;
+}) {
+  const { size } = await searchParams;
+  const requestedSize = Number(size);
+  const sizeQuery =
+    Number.isFinite(requestedSize) && requestedSize > 0
+      ? `?size=${requestedSize}`
+      : "";
+
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect("/login?next=/fotolibro");
+  if (!user)
+    redirect(`/login?next=${encodeURIComponent(`/fotolibro${sizeQuery}`)}`);
 
   const { data: existing } = await supabase
     .from("photobook_projects")
@@ -21,10 +33,15 @@ export default async function PhotobookConfigPage() {
     .order("updated_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (existing) redirect(`/fotolibro/${existing.id}/configuracion`);
+  if (existing)
+    redirect(`/fotolibro/${existing.id}/configuracion${sizeQuery}`);
 
   const settings = await getPhotobookSettings();
   if (!settings.enabled) redirect("/");
+
+  const initialSizeCm = settings.sizes.some((s) => s.cm === requestedSize)
+    ? requestedSize
+    : undefined;
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6">
@@ -39,7 +56,7 @@ export default async function PhotobookConfigPage() {
         </p>
       </div>
 
-      <ConfigForm settings={settings} />
+      <ConfigForm settings={settings} initialSizeCm={initialSizeCm} />
     </div>
   );
 }

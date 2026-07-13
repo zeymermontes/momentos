@@ -69,7 +69,11 @@ export async function loginAction(
 
   await mergeGuestCartIntoUser();
   revalidatePath("/", "layout");
-  redirect("/");
+
+  // Honor ?next= from guarded pages (e.g. /fotolibro?size=21), but only
+  // internal paths — never absolute URLs — to avoid open redirects.
+  const next = String(formData.get("next") ?? "");
+  redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/");
 }
 
 export async function signupAction(

@@ -13,6 +13,9 @@ type Props = {
   currentSizeCm: number;
   currentPageCount: number;
   settings: PhotobookSettings;
+  /** Preselects a size different from the project's (e.g. from a catalog
+   * link). Nothing persists until the customer saves. */
+  initialSizeCm?: number;
 };
 
 export function ProjectConfigForm({
@@ -20,9 +23,10 @@ export function ProjectConfigForm({
   currentSizeCm,
   currentPageCount,
   settings,
+  initialSizeCm,
 }: Props) {
   const router = useRouter();
-  const [sizeCm, setSizeCm] = useState(currentSizeCm);
+  const [sizeCm, setSizeCm] = useState(initialSizeCm ?? currentSizeCm);
   const [pageCount, setPageCount] = useState(currentPageCount);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
