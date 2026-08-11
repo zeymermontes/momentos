@@ -58,6 +58,7 @@ export function evaluatePromoCode(
       min_subtotal: promo.min_subtotal,
       buy_x: null,
       scope: "all",
+      photobook_size_cm: [],
       starts_at: promo.starts_at,
       ends_at: promo.ends_at,
       sort_order: 0,

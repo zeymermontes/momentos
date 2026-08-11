@@ -6,7 +6,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { CheckoutClient } from "@/app/(storefront)/checkout/_components/checkout-client";
 import { requireUser } from "@/lib/auth";
 import { getCart } from "@/lib/cart";
-import { getActivePromotionRules } from "@/lib/promotions";
+import { getActivePromotionRules, readSizeCm } from "@/lib/promotions";
 
 export const metadata = { title: "Checkout" };
 export const dynamic = "force-dynamic";
@@ -100,6 +100,7 @@ export default async function CheckoutPage() {
       category_id: i.products?.category_id ?? null,
       additional_category_ids: i.product_id ? (extraCatsByProduct.get(i.product_id) ?? []) : [],
       is_photobook: isPhotobook,
+      photobook_size_cm: readSizeCm(cust),
       is_gift_card: Boolean(i.products?.is_gift_card),
       delivery_method: ((): "email" | "physical" => {
         const gc = cust?.gift_card as Record<string, unknown> | undefined;

@@ -13,6 +13,12 @@ export type PromotionRule = {
   buy_x: number | null;
   min_subtotal: number | null;
   scope: PromotionRuleScope;
+  /**
+   * For `scope = "fotolibros"`: the photobook sizes (in cm) the promo applies
+   * to. Empty means every size qualifies — that's the behaviour of every rule
+   * created before per-size targeting existed.
+   */
+  photobook_size_cm: number[];
   starts_at: string | null;
   ends_at: string | null;
   sort_order: number;
@@ -28,6 +34,8 @@ export type CartItemForPromo = {
   quantity: number;
   unit_price: number;
   is_photobook?: boolean;
+  /** Size of the photobook in cm. Only set when `is_photobook`. */
+  photobook_size_cm?: number | null;
 };
 
 export type EvaluatedPromotion = {
@@ -55,32 +63,52 @@ export type AppliedPromotionSnapshot = {
   code?: string;
 };
 
+/**
+ * Pull the photobook size out of a cart item's `customization` blob. It is
+ * written by the fotolibro flow as a number, but jsonb round-trips loosely
+ * enough that a numeric string shows up too.
+ */
+export function readSizeCm(
+  customization: Record<string, unknown> | null | undefined,
+): number | null {
+  const raw = customization?.size_cm;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Does this cart line fall inside the rule's scope? */
+function itemInScope(rule: PromotionRule, item: CartItemForPromo): boolean {
+  if (rule.scope === "all") return true;
+
+  if (rule.scope === "fotolibros") {
+    if (!item.is_photobook) return false;
+    // No sizes picked = the whole fotolibros catalog.
+    const sizes = rule.photobook_size_cm ?? [];
+    if (sizes.length === 0) return true;
+    return (
+      item.photobook_size_cm != null &&
+      sizes.includes(Number(item.photobook_size_cm))
+    );
+  }
+
+  if (rule.scope === "products") {
+    return rule.product_ids.includes(item.product_id);
+  }
+
+  // scope === "categories"
+  const cats = [
+    item.category_id,
+    ...(item.additional_category_ids ?? []),
+  ].filter((x): x is string => Boolean(x));
+  return cats.some((c) => rule.category_ids.includes(c));
+}
+
 function qualifyingSubtotal(
   rule: PromotionRule,
   items: CartItemForPromo[],
 ): number {
-  if (rule.scope === "all") {
-    return items.reduce((s, i) => s + Number(i.unit_price) * Number(i.quantity), 0);
-  }
-  if (rule.scope === "fotolibros") {
-    return items
-      .filter((i) => i.is_photobook)
-      .reduce((s, i) => s + Number(i.unit_price) * Number(i.quantity), 0);
-  }
-  if (rule.scope === "products") {
-    return items
-      .filter((i) => rule.product_ids.includes(i.product_id))
-      .reduce((s, i) => s + Number(i.unit_price) * Number(i.quantity), 0);
-  }
-  // scope === "categories"
   return items
-    .filter((i) => {
-      const cats = [
-        i.category_id,
-        ...(i.additional_category_ids ?? []),
-      ].filter((x): x is string => Boolean(x));
-      return cats.some((c) => rule.category_ids.includes(c));
-    })
+    .filter((i) => itemInScope(rule, i))
     .reduce((s, i) => s + Number(i.unit_price) * Number(i.quantity), 0);
 }
 
@@ -88,24 +116,8 @@ function qualifyingQuantity(
   rule: PromotionRule,
   items: CartItemForPromo[],
 ): number {
-  if (rule.scope === "all") {
-    return items.reduce((s, i) => s + Number(i.quantity), 0);
-  }
-  if (rule.scope === "fotolibros") {
-    return items.filter((i) => i.is_photobook).reduce((s, i) => s + Number(i.quantity), 0);
-  }
-  if (rule.scope === "products") {
-    return items
-      .filter((i) => rule.product_ids.includes(i.product_id))
-      .reduce((s, i) => s + Number(i.quantity), 0);
-  }
   return items
-    .filter((i) => {
-      const cats = [i.category_id, ...(i.additional_category_ids ?? [])].filter(
-        (x): x is string => Boolean(x),
-      );
-      return cats.some((c) => rule.category_ids.includes(c));
-    })
+    .filter((i) => itemInScope(rule, i))
     .reduce((s, i) => s + Number(i.quantity), 0);
 }
 

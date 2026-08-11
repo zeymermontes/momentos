@@ -25,6 +25,7 @@ type PromotionRule = {
   discount_value: number;
   min_subtotal: number | null;
   scope: "all" | "products" | "categories" | "fotolibros";
+  photobook_size_cm: number[] | null;
   starts_at: string | null;
   ends_at: string | null;
   sort_order: number;
@@ -33,12 +34,16 @@ type PromotionRule = {
 
 type IdName = { id: string; name: string };
 
+/** A photobook size as configured in Ajustes → Fotolibros. */
+type SizeOption = { cm: number; label: string; sublabel: string };
+
 type Props = {
   rule?: PromotionRule;
   selectedProductIds?: string[];
   selectedCategoryIds?: string[];
   products: IdName[];
   categories: IdName[];
+  photobookSizes?: SizeOption[];
 };
 
 export function PromotionForm({
@@ -47,6 +52,7 @@ export function PromotionForm({
   selectedCategoryIds = [],
   products,
   categories,
+  photobookSizes = [],
 }: Props) {
   const action = rule
     ? updatePromotionAction.bind(null, rule.id)
@@ -67,6 +73,10 @@ export function PromotionForm({
   );
   const [categorySet, setCategorySet] = useState<Set<string>>(
     new Set(selectedCategoryIds),
+  );
+  // Stored as strings so it can share `toggle()` with the other pickers.
+  const [sizeSet, setSizeSet] = useState<Set<string>>(
+    new Set((rule?.photobook_size_cm ?? []).map(String)),
   );
 
   function toggle(set: Set<string>, id: string, setter: (s: Set<string>) => void) {
@@ -222,6 +232,54 @@ export function PromotionForm({
               : "Para \"Envío gratis\" el alcance no cambia el comportamiento — la promo aplica al envío del pedido al cumplir el mínimo de compra."}
           </p>
         </div>
+
+        {scope === "fotolibros" ? (
+          <div className="space-y-2">
+            <Label>Tamaños incluidos</Label>
+            {photobookSizes.length === 0 ? (
+              <p className="text-xs italic text-muted-foreground">
+                No hay tamaños configurados en Ajustes → Fotolibros.
+              </p>
+            ) : (
+              <>
+                <div className="grid gap-1.5 rounded-md border border-border bg-background p-2 sm:grid-cols-2">
+                  {photobookSizes.map((size) => {
+                    const value = String(size.cm);
+                    const checked = sizeSet.has(value);
+                    return (
+                      <label
+                        key={size.cm}
+                        className={cn(
+                          "flex items-center gap-2 rounded px-2 py-1 text-sm",
+                          checked && "bg-primary/10",
+                        )}
+                      >
+                        <Checkbox
+                          name="photobook_size_cm"
+                          value={value}
+                          checked={checked}
+                          onChange={() => toggle(sizeSet, value, setSizeSet)}
+                        />
+                        <span className="truncate">
+                          {size.label}
+                          <span className="text-muted-foreground">
+                            {" "}
+                            · {size.sublabel}
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {sizeSet.size === 0
+                    ? "Sin selección la promo aplica a todos los tamaños."
+                    : "Solo los fotolibros de los tamaños marcados cuentan para esta promo."}
+                </p>
+              </>
+            )}
+          </div>
+        ) : null}
 
         {scope === "products" ? (
           <ScopePicker

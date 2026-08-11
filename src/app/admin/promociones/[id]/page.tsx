@@ -3,6 +3,7 @@ import { AdminPageHeader } from "@/components/admin/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { PromotionForm } from "@/app/admin/promociones/_components/promotion-form";
 import { requireAdmin } from "@/lib/auth";
+import { getPhotobookSettings } from "@/lib/photobook";
 
 export const metadata = { title: "Editar promoción" };
 
@@ -20,6 +21,7 @@ export default async function EditPromotionPage({
     { data: categories },
     { data: ruleProducts },
     { data: ruleCategories },
+    photobook,
   ] = await Promise.all([
     supabase.from("promotion_rules").select("*").eq("id", id).maybeSingle(),
     supabase
@@ -36,6 +38,7 @@ export default async function EditPromotionPage({
       .from("promotion_rule_categories")
       .select("category_id")
       .eq("promotion_rule_id", id),
+    getPhotobookSettings(),
   ]);
 
   if (!rule) notFound();
@@ -52,11 +55,17 @@ export default async function EditPromotionPage({
               buy_x: rule.buy_x === null || rule.buy_x === undefined ? null : Number(rule.buy_x),
               min_subtotal:
                 rule.min_subtotal === null ? null : Number(rule.min_subtotal),
+              photobook_size_cm: (rule.photobook_size_cm ?? []).map(Number),
             }}
             selectedProductIds={(ruleProducts ?? []).map((r) => r.product_id)}
             selectedCategoryIds={(ruleCategories ?? []).map((r) => r.category_id)}
             products={products ?? []}
             categories={categories ?? []}
+            photobookSizes={photobook.sizes.map((s) => ({
+              cm: s.cm,
+              label: s.label,
+              sublabel: s.sublabel,
+            }))}
           />
         </CardContent>
       </Card>

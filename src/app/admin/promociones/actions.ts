@@ -88,7 +88,30 @@ function readScopeIds(formData: FormData) {
     .getAll("category_ids")
     .map((v) => String(v))
     .filter((v) => /^[0-9a-f-]{36}$/i.test(v));
-  return { productIds, categoryIds };
+  // Photobook sizes are ints (cm), not rows, so they ride along on the rule
+  // itself instead of a link table.
+  const photobookSizes = Array.from(
+    new Set(
+      formData
+        .getAll("photobook_size_cm")
+        .map((v) => Number(v))
+        .filter((n) => Number.isFinite(n) && n > 0),
+    ),
+  ).sort((a, b) => a - b);
+  return { productIds, categoryIds, photobookSizes };
+}
+
+/**
+ * Sizes only mean anything for the `fotolibros` scope. Storing null elsewhere
+ * keeps a stale selection from silently reactivating if the admin flips the
+ * scope back later.
+ */
+function scopedSizes(
+  scope: "all" | "products" | "categories" | "fotolibros",
+  sizes: number[],
+): number[] | null {
+  if (scope !== "fotolibros" || sizes.length === 0) return null;
+  return sizes;
 }
 
 async function syncScope(
@@ -138,7 +161,7 @@ export async function createPromotionAction(
     if (!parsed.success) {
       return { errors: z.flattenError(parsed.error).fieldErrors };
     }
-    const { productIds, categoryIds } = readScopeIds(formData);
+    const { productIds, categoryIds, photobookSizes } = readScopeIds(formData);
     const { supabase } = await requireAdmin();
     const { data, error } = await supabase
       .from("promotion_rules")
@@ -151,6 +174,7 @@ export async function createPromotionAction(
         buy_x: parsed.data.buy_x ?? null,
         min_subtotal: parsed.data.min_subtotal ?? null,
         scope: parsed.data.scope,
+        photobook_size_cm: scopedSizes(parsed.data.scope, photobookSizes),
         starts_at: parsed.data.starts_at || null,
         ends_at: parsed.data.ends_at || null,
         sort_order: parsed.data.sort_order ?? 0,
@@ -178,7 +202,7 @@ export async function updatePromotionAction(
     if (!parsed.success) {
       return { errors: z.flattenError(parsed.error).fieldErrors };
     }
-    const { productIds, categoryIds } = readScopeIds(formData);
+    const { productIds, categoryIds, photobookSizes } = readScopeIds(formData);
     const { supabase } = await requireAdmin();
     const { error } = await supabase
       .from("promotion_rules")
@@ -191,6 +215,7 @@ export async function updatePromotionAction(
         buy_x: parsed.data.buy_x ?? null,
         min_subtotal: parsed.data.min_subtotal ?? null,
         scope: parsed.data.scope,
+        photobook_size_cm: scopedSizes(parsed.data.scope, photobookSizes),
         starts_at: parsed.data.starts_at || null,
         ends_at: parsed.data.ends_at || null,
         sort_order: parsed.data.sort_order ?? 0,

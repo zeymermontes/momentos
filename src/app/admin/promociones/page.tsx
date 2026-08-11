@@ -20,7 +20,10 @@ import {
   deletePromotionAction,
   togglePromotionActiveAction,
 } from "@/app/admin/promociones/actions";
-import { PROMOTION_TYPE_LABEL } from "@/lib/promotions";
+import {
+  PROMOTION_SCOPE_LABEL,
+  PROMOTION_TYPE_LABEL,
+} from "@/lib/promotions";
 
 export const metadata = { title: "Promociones" };
 export const dynamic = "force-dynamic";
@@ -76,6 +79,7 @@ export default async function PromotionsAdminPage() {
               <TableRow>
                 <TableHead>Tipo</TableHead>
                 <TableHead>Nombre</TableHead>
+                <TableHead>Alcance</TableHead>
                 <TableHead>Valor</TableHead>
                 <TableHead>Mínimo</TableHead>
                 <TableHead>Vigencia</TableHead>
@@ -99,6 +103,14 @@ export default async function PromotionsAdminPage() {
                     <TableCell>
                       <p className="font-medium">{r.label}</p>
                       <p className="text-xs text-muted-foreground">{r.name}</p>
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {PROMOTION_SCOPE_LABEL[r.scope] ?? r.scope}
+                      {r.scope === "fotolibros" ? (
+                        <span className="block text-muted-foreground">
+                          {formatSizes(r.photobook_size_cm)}
+                        </span>
+                      ) : null}
                     </TableCell>
                     <TableCell>
                       {r.type === "free_shipping"
@@ -160,6 +172,11 @@ export default async function PromotionsAdminPage() {
       )}
     </div>
   );
+}
+
+function formatSizes(sizes: number[] | null): string {
+  if (!sizes || sizes.length === 0) return "Todos los tamaños";
+  return sizes.map((cm) => `${cm}×${cm} cm`).join(", ");
 }
 
 function formatWindow(starts: string | null, ends: string | null): string {

@@ -587,6 +587,8 @@ export interface Database {
           buy_x: number | null;
           min_subtotal: number | null;
           scope: PromotionRuleScope;
+          /** scope = fotolibros: qualifying sizes in cm. null/empty = all. */
+          photobook_size_cm: number[] | null;
           starts_at: string | null;
           ends_at: string | null;
           sort_order: number;
@@ -604,6 +606,7 @@ export interface Database {
           buy_x?: number | null;
           min_subtotal?: number | null;
           scope?: PromotionRuleScope;
+          photobook_size_cm?: number[] | null;
           starts_at?: string | null;
           ends_at?: string | null;
           sort_order?: number;

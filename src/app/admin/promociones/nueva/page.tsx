@@ -2,19 +2,22 @@ import { AdminPageHeader } from "@/components/admin/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { PromotionForm } from "@/app/admin/promociones/_components/promotion-form";
 import { requireAdmin } from "@/lib/auth";
+import { getPhotobookSettings } from "@/lib/photobook";
 
 export const metadata = { title: "Nueva promoción" };
 
 export default async function NewPromotionPage() {
   const { supabase } = await requireAdmin();
-  const [{ data: products }, { data: categories }] = await Promise.all([
-    supabase
-      .from("products")
-      .select("id, name")
-      .eq("status", "active")
-      .order("name"),
-    supabase.from("categories").select("id, name").order("name"),
-  ]);
+  const [{ data: products }, { data: categories }, photobook] =
+    await Promise.all([
+      supabase
+        .from("products")
+        .select("id, name")
+        .eq("status", "active")
+        .order("name"),
+      supabase.from("categories").select("id, name").order("name"),
+      getPhotobookSettings(),
+    ]);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -28,6 +31,11 @@ export default async function NewPromotionPage() {
           <PromotionForm
             products={products ?? []}
             categories={categories ?? []}
+            photobookSizes={photobook.sizes.map((s) => ({
+              cm: s.cm,
+              label: s.label,
+              sublabel: s.sublabel,
+            }))}
           />
         </CardContent>
       </Card>
