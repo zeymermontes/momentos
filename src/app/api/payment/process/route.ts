@@ -83,12 +83,15 @@ async function buildRiskEnrichment(
 
   const additionalInfo: Record<string, unknown> = {};
   if (items && items.length > 0) {
-    additionalInfo.items = items.map((i) => ({
-      id: orderId.slice(0, 8),
+    // Only id / title / description / picture_url / category_id / quantity /
+    // unit_price are valid here. `currency_id` belongs to preference items and
+    // is rejected outright on a payment — it took the whole charge down with
+    // "The name of the following parameters is wrong".
+    additionalInfo.items = items.map((i, idx) => ({
+      id: `${orderId.slice(0, 8)}-${idx + 1}`,
       title: [i.product_name, i.variant_name].filter(Boolean).join(" — "),
       quantity: Number(i.quantity),
       unit_price: Number(i.unit_price),
-      currency_id: "MXN",
     }));
   }
   if (Object.keys(payerInfo).length > 0) additionalInfo.payer = payerInfo;
