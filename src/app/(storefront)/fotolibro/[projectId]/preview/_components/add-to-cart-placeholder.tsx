@@ -6,6 +6,10 @@ import { Button } from "@/components/ui/button";
 import { addPhotobookToCartAction } from "@/app/(storefront)/fotolibro/actions";
 import { getPhotobookPrice } from "@/lib/photobook-config";
 import type { PhotobookSettings } from "@/lib/photobook-config";
+import {
+  previewItemDiscount,
+  type PromotionRule,
+} from "@/lib/promotions-engine";
 import { formatMXN, cn } from "@/lib/utils";
 
 export function AddToCartButton({
@@ -13,11 +17,13 @@ export function AddToCartButton({
   sizeCm,
   pageCount,
   settings,
+  promotionRules,
 }: {
   projectId: string;
   sizeCm: number;
   pageCount: number;
   settings: PhotobookSettings;
+  promotionRules?: PromotionRule[];
 }) {
   const sizeConfig = settings.sizes.find((s) => s.cm === sizeCm);
   const supportsHardcover = sizeConfig?.supports_hardcover !== false;
@@ -39,6 +45,20 @@ export function AddToCartButton({
     effectiveHardcover,
   );
   const total = unitPrice * quantity;
+
+  // Quoted as if this book were the whole cart — see previewItemDiscount.
+  // The copy below points at the cart for the final number.
+  const promo = promotionRules?.length
+    ? previewItemDiscount(promotionRules, {
+        product_id: "",
+        category_id: null,
+        quantity,
+        unit_price: unitPrice,
+        is_photobook: true,
+        photobook_size_cm: sizeCm,
+        photobook_page_count: pageCount,
+      })
+    : null;
 
   function handleClick() {
     startTransition(async () => {
@@ -134,12 +154,38 @@ export function AddToCartButton({
             <span>× {quantity} copias</span>
           </div>
         )}
+        {promo
+          ? promo.promos.map((p) => (
+              <div
+                key={p.label}
+                className="flex justify-between gap-3 text-emerald-700"
+              >
+                <span className="min-w-0 flex-1 truncate" title={p.label}>
+                  {p.label}
+                </span>
+                <span className="shrink-0">−{formatMXN(p.amount)}</span>
+              </div>
+            ))
+          : null}
         <div className="flex justify-between font-semibold text-base pt-1">
           <span>Total</span>
-          <span>{formatMXN(total)}</span>
+          <span>
+            {promo ? (
+              <>
+                <span className="mr-2 text-sm font-normal text-muted-foreground line-through">
+                  {formatMXN(total)}
+                </span>
+                {formatMXN(promo.finalPrice)}
+              </>
+            ) : (
+              formatMXN(total)
+            )}
+          </span>
         </div>
         <p className="text-xs text-muted-foreground pt-1">
-          Las promociones se aplican en el carrito.
+          {promo
+            ? "El total definitivo se confirma en el carrito."
+            : "Las promociones se aplican en el carrito."}
         </p>
       </div>
 

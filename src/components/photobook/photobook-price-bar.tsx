@@ -2,7 +2,7 @@
 
 import { formatMXN } from "@/lib/utils";
 import {
-  previewSingleItemDiscount,
+  previewItemDiscount,
   type PromotionRule,
 } from "@/lib/promotions-engine";
 import { PromoTicker } from "@/components/photobook/promo-ticker";
@@ -28,7 +28,7 @@ export function PhotobookPriceBar({
   promotionRules?: PromotionRule[];
 }) {
   const promo = promotionRules?.length
-    ? previewSingleItemDiscount(promotionRules, {
+    ? previewItemDiscount(promotionRules, {
         product_id: "",
         category_id: null,
         quantity: 1,

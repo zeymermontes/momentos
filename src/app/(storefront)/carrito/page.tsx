@@ -98,6 +98,12 @@ export default async function CartPage() {
   const rules = await getActivePromotionRules();
   const promos = evaluatePromotions(rules, promoItems, 0);
 
+  // Evaluated with shipping 0, so total_discount is purely money off the
+  // subtotal — a free-shipping rule contributes nothing here and its value
+  // shows up at checkout, where the real shipping cost is known.
+  const discount = promos.total_discount;
+  const estimatedTotal = Math.max(0, subtotal - discount);
+
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
       <h1 className="text-3xl font-bold tracking-tight">Tu carrito</h1>
@@ -152,6 +158,12 @@ export default async function CartPage() {
                 <span className="text-muted-foreground">Subtotal</span>
                 <span className="font-medium">{formatMXN(subtotal)}</span>
               </div>
+              {discount > 0 ? (
+                <div className="flex justify-between text-emerald-700">
+                  <span>Descuentos</span>
+                  <span className="font-medium">−{formatMXN(discount)}</span>
+                </div>
+              ) : null}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Envío</span>
                 <span className="text-muted-foreground">
@@ -161,7 +173,9 @@ export default async function CartPage() {
             </div>
             <div className="flex items-baseline justify-between border-t border-border pt-3">
               <span className="font-semibold">Total estimado</span>
-              <span className="text-xl font-bold">{formatMXN(subtotal)}</span>
+              <span className="text-xl font-bold">
+                {formatMXN(estimatedTotal)}
+              </span>
             </div>
             <Link
               href="/checkout"

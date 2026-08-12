@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { getProject, getProjectPages, getCoverThumbUrl, getCoverUrl, getPhotobookSettings } from "@/lib/photobook";
+import { getActivePromotionRules } from "@/lib/promotions";
 import { StepIndicator } from "@/components/photobook/step-indicator";
 import { StepNav } from "@/components/photobook/step-nav";
 import { BookPreview3D } from "@/components/photobook/book-preview-3d";
@@ -22,12 +23,14 @@ export default async function PreviewPage({
   // Prefer the cover thumbnail so the 3D book reuses the same image
   // assets already in the browser cache from earlier steps. Fall back to
   // the full image only if the thumb hasn't been generated yet.
-  const [pages, coverThumb, coverFull, settings] = await Promise.all([
-    getProjectPages(projectId),
-    getCoverThumbUrl(project),
-    getCoverUrl(project),
-    getPhotobookSettings(),
-  ]);
+  const [pages, coverThumb, coverFull, settings, promotionRules] =
+    await Promise.all([
+      getProjectPages(projectId),
+      getCoverThumbUrl(project),
+      getCoverUrl(project),
+      getPhotobookSettings(),
+      getActivePromotionRules(),
+    ]);
   const coverUrl = coverThumb ?? coverFull;
 
   const filledCount = pages.filter((p) => p.image_url).length;
@@ -43,6 +46,7 @@ export default async function PreviewPage({
 
         {filledCount > 0 ? (
           <AddToCartButton
+            promotionRules={promotionRules}
             projectId={projectId}
             sizeCm={project.size_cm}
             pageCount={project.page_count}

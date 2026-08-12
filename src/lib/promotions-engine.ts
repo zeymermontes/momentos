@@ -246,36 +246,41 @@ export function evaluatePromotions(
   };
 }
 
-export type SingleItemDiscount = {
-  /** Each promo that fired, with what it takes off this one unit. */
+export type ItemDiscountPreview = {
+  /** Each promo that fired, with what it takes off this line. */
   promos: Array<{ label: string; amount: number }>;
-  /** Total pesos off this one unit. */
+  /** Total pesos off this line. */
   amount: number;
+  /** Line total after the discount. */
   finalPrice: number;
 };
 
 /**
- * What one unit of a product would cost on its own, given the active promos.
+ * What this line would cost on its own, given the active promos.
  *
- * The photobook builder shows a price before anything reaches the cart, so it
- * needs an answer for a single configured book. Only promos whose discount is
- * knowable from that one item are counted: `free_shipping` isn't an item price
- * at all, and `buy_x_get_y` (like any quantity gate) depends on what else the
- * customer ends up buying. Quantity-gated rules drop out on their own, since
- * this evaluates a cart of exactly one unit.
+ * The photobook builder quotes a price before anything reaches the cart, so it
+ * needs an answer for a book that isn't in a cart yet. Only promos whose
+ * discount is knowable from the line alone are counted: `free_shipping` isn't
+ * an item price at all, and `buy_x_get_y` depends on what else gets bought.
  *
- * Understating is the safe direction here — a rule with a minimum this single
- * item doesn't reach simply won't show, and the cart may then beat the quoted
- * price. Overstating would be the bug.
+ * The line's own `quantity` is respected, which matters because `amount_off`
+ * takes a flat sum off the qualifying subtotal rather than a cut per unit —
+ * three copies still share one $50 off, not $150.
+ *
+ * This is a quote for a cart containing only this line. If the customer
+ * already has a qualifying item, a flat `amount_off` is shared with it and the
+ * real discount will be smaller, so callers should point at the cart for the
+ * final word. In the other direction it understates safely: a rule whose
+ * minimum this line alone doesn't reach simply doesn't show.
  *
  * Returns null when nothing applies, so callers can render the plain price.
  */
-export function previewSingleItemDiscount(
+export function previewItemDiscount(
   rules: PromotionRule[],
   item: CartItemForPromo,
-): SingleItemDiscount | null {
-  const unit = { ...item, quantity: 1 };
-  const { applied } = evaluatePromotions(rules, [unit], 0);
+): ItemDiscountPreview | null {
+  const lineTotal = Number(item.unit_price) * Number(item.quantity);
+  const { applied } = evaluatePromotions(rules, [item], 0);
 
   const itemLevel = applied.filter(
     (a) => a.rule.type === "percent_off" || a.rule.type === "amount_off",
@@ -285,7 +290,7 @@ export function previewSingleItemDiscount(
   const amount = round2(
     Math.min(
       itemLevel.reduce((s, a) => s + a.discount_amount, 0),
-      Number(unit.unit_price),
+      lineTotal,
     ),
   );
   if (amount <= 0) return null;
@@ -296,7 +301,7 @@ export function previewSingleItemDiscount(
       amount: round2(a.discount_amount),
     })),
     amount,
-    finalPrice: round2(Number(unit.unit_price) - amount),
+    finalPrice: round2(lineTotal - amount),
   };
 }
 
