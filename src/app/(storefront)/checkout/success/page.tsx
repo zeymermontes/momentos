@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { requireUser } from "@/lib/auth";
 import { mpPayment } from "@/lib/mercadopago";
+import { rejectionOutcome } from "@/lib/mercadopago-status";
 import {
   issueGiftCardsForPaidOrder,
   redeemPendingGiftCardForOrder,
@@ -50,10 +51,14 @@ export default async function CheckoutSuccessPage({
   let barcodeContent: string | null = null;
   let paymentMethodId: string | null = null;
   let dateOfExpiration: string | null = null;
+  // Falls back to what we persisted, so a reload (or a webhook-driven update
+  // with no browser round-trip) still explains why the charge failed.
+  let statusDetail: string | null = order.payment_status_detail ?? null;
   if (paymentId) {
     try {
       const payment = await mpPayment().get({ id: paymentId });
       mpStatus = payment.status ?? mpStatus;
+      statusDetail = payment.status_detail ?? statusDetail;
       paymentMethodId = payment.payment_method_id ?? null;
       dateOfExpiration = payment.date_of_expiration ?? null;
       const txData = payment.point_of_interaction?.transaction_data as
@@ -72,6 +77,7 @@ export default async function CheckoutSuccessPage({
         .update({
           payment_id: String(paymentId),
           payment_status: payment.status ?? "unknown",
+          payment_status_detail: payment.status_detail ?? null,
           status: nextStatus,
         })
         .eq("id", order.id);
@@ -150,6 +156,10 @@ export default async function CheckoutSuccessPage({
         ? Clock
         : AlertTriangle;
 
+  // Only consulted on the failure branch, but resolving it here keeps the
+  // JSX above readable.
+  const outcome = rejectionOutcome(statusDetail);
+
   const expirationDate = dateOfExpiration
     ? new Date(dateOfExpiration).toLocaleString("es-MX", {
         dateStyle: "long",
@@ -180,7 +190,7 @@ export default async function CheckoutSuccessPage({
                   : "Casi listo — completa tu pago en efectivo"
                 : pending
                   ? "Estamos confirmando tu pago"
-                  : "No pudimos confirmar tu pago"}
+                  : outcome.title}
           </h1>
           <p className="text-sm text-muted-foreground">
             {approved
@@ -189,7 +199,7 @@ export default async function CheckoutSuccessPage({
                 ? "Sigue las instrucciones del comprobante para finalizar tu compra. Tu pedido se procesará cuando confirmemos el pago."
                 : pending
                   ? "MercadoPago está procesando tu pago. Te notificaremos cuando se confirme."
-                  : "Si crees que es un error, revisa el estado en tus pedidos o vuelve a intentar."}
+                  : outcome.body}
           </p>
 
           {isCashPayment && pending && hasVoucher ? (

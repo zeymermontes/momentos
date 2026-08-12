@@ -120,10 +120,14 @@ export async function POST(req: NextRequest) {
   const update: {
     payment_id: string;
     payment_status: string;
+    payment_status_detail: string | null;
     status?: "paid" | "cancelled";
   } = {
     payment_id: String(payment.id),
     payment_status: payment.status ?? "unknown",
+    // Carried so the customer gets the specific reason even when the outcome
+    // arrives here rather than through the browser redirect.
+    payment_status_detail: payment.status_detail ?? null,
   };
   if (newOrderStatus) update.status = newOrderStatus;
 

@@ -352,6 +352,7 @@ export interface Database {
           payment_provider: string | null;
           payment_id: string | null;
           payment_status: string | null;
+          payment_status_detail: string | null;
           tracking_number: string | null;
           carrier: string | null;
           notes: string | null;
@@ -375,6 +376,7 @@ export interface Database {
           payment_provider?: string | null;
           payment_id?: string | null;
           payment_status?: string | null;
+          payment_status_detail?: string | null;
           tracking_number?: string | null;
           carrier?: string | null;
           notes?: string | null;

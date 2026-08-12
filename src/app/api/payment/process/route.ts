@@ -4,6 +4,108 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { mpPayment } from "@/lib/mercadopago";
 
 /**
+ * Idempotency scope for one attempt.
+ *
+ * Keying on the order alone stopped double-charges but also made MercadoPago
+ * replay its stored answer for every later attempt on that order — so a
+ * customer who mistyped their CVV, fixed it and submitted again got the
+ * original rejection back, and the error looked permanent.
+ *
+ * Card tokens are single-use and re-minted on each submit, so folding the
+ * token in keeps the double-click protection (same submit, same token, same
+ * key) while letting a genuine retry through as a new attempt.
+ *
+ * Methods without a token (cash vouchers, transfers) keep the per-order key:
+ * there is no "fix and retry" for them, and replaying beats issuing a second
+ * voucher for the same order.
+ */
+function idempotencyKeyFor(
+  orderId: string,
+  body: Record<string, unknown>,
+): string {
+  const token = typeof body.token === "string" ? body.token : null;
+  return token ? `order-${orderId}-${token}` : `order-${orderId}`;
+}
+
+type Enrichment = {
+  payer: Record<string, unknown>;
+  additionalInfo: Record<string, unknown>;
+};
+
+/**
+ * Payer identity and order contents for MercadoPago's risk scoring. Best
+ * effort: any missing piece is simply omitted rather than blocking the charge,
+ * since a thinner payload still pays — it just scores worse.
+ */
+async function buildRiskEnrichment(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  orderId: string,
+  addressSnapshot: unknown,
+): Promise<Enrichment> {
+  const [{ data: profile }, { data: items }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("full_name, phone")
+      .eq("id", userId)
+      .maybeSingle(),
+    supabase
+      .from("order_items")
+      .select("product_name, variant_name, quantity, unit_price")
+      .eq("order_id", orderId),
+  ]);
+
+  const fullName = (profile?.full_name ?? "").trim();
+  const [firstName, ...rest] = fullName.split(/\s+/).filter(Boolean);
+  const lastName = rest.join(" ");
+
+  const addr =
+    addressSnapshot && typeof addressSnapshot === "object"
+      ? (addressSnapshot as Record<string, unknown>)
+      : null;
+  const street = typeof addr?.street === "string" ? addr.street : undefined;
+  const streetNumber =
+    typeof addr?.ext_number === "string" ? addr.ext_number : undefined;
+  const zip = typeof addr?.zip === "string" ? addr.zip : undefined;
+  const phone = (profile?.phone ?? (addr?.phone as string | undefined)) || undefined;
+
+  const payerInfo: Record<string, unknown> = {};
+  if (firstName) payerInfo.first_name = firstName;
+  if (lastName) payerInfo.last_name = lastName;
+  if (phone) payerInfo.phone = { number: phone };
+  if (street || zip) {
+    payerInfo.address = {
+      ...(zip ? { zip_code: zip } : {}),
+      ...(street ? { street_name: street } : {}),
+      ...(streetNumber ? { street_number: streetNumber } : {}),
+    };
+  }
+
+  const additionalInfo: Record<string, unknown> = {};
+  if (items && items.length > 0) {
+    additionalInfo.items = items.map((i) => ({
+      id: orderId.slice(0, 8),
+      title: [i.product_name, i.variant_name].filter(Boolean).join(" — "),
+      quantity: Number(i.quantity),
+      unit_price: Number(i.unit_price),
+      currency_id: "MXN",
+    }));
+  }
+  if (Object.keys(payerInfo).length > 0) additionalInfo.payer = payerInfo;
+  if (street || zip) {
+    additionalInfo.shipments = { receiver_address: payerInfo.address };
+  }
+
+  // `payer` on the payment itself takes only identity fields; the address and
+  // item list belong under additional_info.
+  const payer: Record<string, unknown> = {};
+  if (firstName) payer.first_name = firstName;
+  if (lastName) payer.last_name = lastName;
+
+  return { payer, additionalInfo };
+}
+
+/**
  * Processes a payment submitted by the MercadoPago Payment Brick.
  *
  * Body shape: the brick's `formData` (token, payment_method_id, payer,
@@ -38,7 +140,7 @@ export async function POST(req: NextRequest) {
 
   const { data: order } = await supabase
     .from("orders")
-    .select("id, total, status, payment_status")
+    .select("id, total, status, payment_status, address_snapshot")
     .eq("id", orderId)
     .eq("user_id", user.id)
     .maybeSingle();
@@ -64,10 +166,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Everything MercadoPago's risk engine can score on. The brick only sends a
+  // token, an amount and an email; name, phone, address and the item list are
+  // ours to add, and they are exactly the signals that decide borderline calls
+  // like cc_rejected_high_risk.
+  const enrichment = await buildRiskEnrichment(
+    supabase,
+    user.id,
+    orderId,
+    order.address_snapshot,
+  );
+
   // Build the MP Payment payload. We trust the brick to send the right shape
   // for the chosen payment method (card token, payer info, etc.).
+  const brickPayer = (body.payer ?? {}) as Record<string, unknown>;
   const paymentBody = {
     ...(body as Record<string, unknown>),
+    payer: { ...enrichment.payer, ...brickPayer },
+    additional_info: enrichment.additionalInfo,
     transaction_amount: orderTotal,
     external_reference: orderId,
     description: `Momentos pedido ${orderId.slice(0, 8)}`,
@@ -81,8 +197,7 @@ export async function POST(req: NextRequest) {
     mpResult = await mpPayment().create({
       body: paymentBody,
       requestOptions: {
-        // Idempotency: if the user double-submits we don't double-charge.
-        idempotencyKey: `order-${orderId}`,
+        idempotencyKey: idempotencyKeyFor(orderId, body),
       },
     });
   } catch (e: unknown) {
@@ -123,6 +238,7 @@ export async function POST(req: NextRequest) {
     .update({
       payment_id: String(mpResult.id ?? ""),
       payment_status: mpResult.status ?? "unknown",
+      payment_status_detail: mpResult.status_detail ?? null,
       status: newStatus,
     })
     .eq("id", orderId);
