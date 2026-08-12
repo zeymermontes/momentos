@@ -7,6 +7,8 @@ import { getPhotobookPrice } from "@/lib/photobook-config";
 import type { PhotobookSettings } from "@/lib/photobook-config";
 import { updateProjectConfigAction } from "@/app/(storefront)/fotolibro/actions";
 import { StepNav } from "@/components/photobook/step-nav";
+import { PhotobookPriceBar } from "@/components/photobook/photobook-price-bar";
+import type { PromotionRule } from "@/lib/promotions-engine";
 
 type Props = {
   projectId: string;
@@ -16,6 +18,7 @@ type Props = {
   /** Preselects a size different from the project's (e.g. from a catalog
    * link). Nothing persists until the customer saves. */
   initialSizeCm?: number;
+  promotionRules?: PromotionRule[];
 };
 
 export function ProjectConfigForm({
@@ -24,6 +27,7 @@ export function ProjectConfigForm({
   currentPageCount,
   settings,
   initialSizeCm,
+  promotionRules,
 }: Props) {
   const router = useRouter();
   const [sizeCm, setSizeCm] = useState(initialSizeCm ?? currentSizeCm);
@@ -106,11 +110,12 @@ export function ProjectConfigForm({
       </fieldset>
 
       {/* Price preview */}
-      <div className="rounded-xl bg-muted/40 p-4 text-center">
-        <span className="text-sm text-muted-foreground">Desde </span>
-        <span className="text-2xl font-bold">{formatMXN(price)}</span>
-        <span className="text-sm text-muted-foreground"> pasta blanda</span>
-      </div>
+      <PhotobookPriceBar
+        price={price}
+        sizeCm={sizeCm}
+        pageCount={pageCount}
+        promotionRules={promotionRules}
+      />
 
       {changed && sizeCm !== currentSizeCm && (
         <p className="rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-900">

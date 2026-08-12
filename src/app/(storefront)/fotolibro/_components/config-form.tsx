@@ -11,13 +11,17 @@ import {
   createProjectAction,
   type ActionState,
 } from "@/app/(storefront)/fotolibro/actions";
+import { PhotobookPriceBar } from "@/components/photobook/photobook-price-bar";
+import type { PromotionRule } from "@/lib/promotions-engine";
 
 export function ConfigForm({
   settings,
   initialSizeCm,
+  promotionRules,
 }: {
   settings: PhotobookSettings;
   initialSizeCm?: number;
+  promotionRules?: PromotionRule[];
 }) {
   const [sizeCm, setSizeCm] = useState(
     initialSizeCm ?? settings.sizes[0]?.cm ?? 20,
@@ -89,11 +93,12 @@ export function ConfigForm({
       </fieldset>
 
       {/* Price preview */}
-      <div className="rounded-xl bg-muted/40 p-4 text-center">
-        <span className="text-sm text-muted-foreground">Desde </span>
-        <span className="text-2xl font-bold">{formatMXN(price)}</span>
-        <span className="text-sm text-muted-foreground"> pasta blanda</span>
-      </div>
+      <PhotobookPriceBar
+        price={price}
+        sizeCm={sizeCm}
+        pageCount={pageCount}
+        promotionRules={promotionRules}
+      />
 
       {state?.message && (
         <p className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">

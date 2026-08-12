@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { getProject, getPhotobookSettings } from "@/lib/photobook";
+import { getActivePromotionRules } from "@/lib/promotions";
 import { StepIndicator } from "@/components/photobook/step-indicator";
 import { ProjectConfigForm } from "./_components/project-config-form";
 
@@ -20,7 +21,10 @@ export default async function ProjectConfigPage({
   const project = await getProject(projectId);
   if (!project) notFound();
 
-  const settings = await getPhotobookSettings();
+  const [settings, promotionRules] = await Promise.all([
+    getPhotobookSettings(),
+    getActivePromotionRules(),
+  ]);
 
   // Coming from a size card in the catalog: preselect that size in the
   // form (the customer still has to save for it to apply to the project).
@@ -40,6 +44,7 @@ export default async function ProjectConfigPage({
           </p>
         </div>
         <ProjectConfigForm
+          promotionRules={promotionRules}
           projectId={projectId}
           currentSizeCm={project.size_cm}
           currentPageCount={project.page_count}

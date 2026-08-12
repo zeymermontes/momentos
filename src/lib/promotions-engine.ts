@@ -246,6 +246,57 @@ export function evaluatePromotions(
   };
 }
 
+export type SingleItemDiscount = {
+  /** Customer-facing labels of the promos that fired. */
+  labels: string[];
+  /** Total pesos off this one unit. */
+  amount: number;
+  finalPrice: number;
+};
+
+/**
+ * What one unit of a product would cost on its own, given the active promos.
+ *
+ * The photobook builder shows a price before anything reaches the cart, so it
+ * needs an answer for a single configured book. Only promos whose discount is
+ * knowable from that one item are counted: `free_shipping` isn't an item price
+ * at all, and `buy_x_get_y` (like any quantity gate) depends on what else the
+ * customer ends up buying. Quantity-gated rules drop out on their own, since
+ * this evaluates a cart of exactly one unit.
+ *
+ * Understating is the safe direction here — a rule with a minimum this single
+ * item doesn't reach simply won't show, and the cart may then beat the quoted
+ * price. Overstating would be the bug.
+ *
+ * Returns null when nothing applies, so callers can render the plain price.
+ */
+export function previewSingleItemDiscount(
+  rules: PromotionRule[],
+  item: CartItemForPromo,
+): SingleItemDiscount | null {
+  const unit = { ...item, quantity: 1 };
+  const { applied } = evaluatePromotions(rules, [unit], 0);
+
+  const itemLevel = applied.filter(
+    (a) => a.rule.type === "percent_off" || a.rule.type === "amount_off",
+  );
+  if (itemLevel.length === 0) return null;
+
+  const amount = round2(
+    Math.min(
+      itemLevel.reduce((s, a) => s + a.discount_amount, 0),
+      Number(unit.unit_price),
+    ),
+  );
+  if (amount <= 0) return null;
+
+  return {
+    labels: itemLevel.map((a) => a.rule.label),
+    amount,
+    finalPrice: round2(Number(unit.unit_price) - amount),
+  };
+}
+
 export function snapshotApplied(
   applied: EvaluatedPromotion[],
 ): AppliedPromotionSnapshot[] {

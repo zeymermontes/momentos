@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { Book } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { getPhotobookSettings } from "@/lib/photobook";
+import { getActivePromotionRules } from "@/lib/promotions";
 import { ConfigForm } from "./_components/config-form";
 
 export const metadata = { title: "Crear fotolibro" };
@@ -36,7 +37,10 @@ export default async function PhotobookConfigPage({
   if (existing)
     redirect(`/fotolibro/${existing.id}/configuracion${sizeQuery}`);
 
-  const settings = await getPhotobookSettings();
+  const [settings, promotionRules] = await Promise.all([
+    getPhotobookSettings(),
+    getActivePromotionRules(),
+  ]);
   if (!settings.enabled) redirect("/");
 
   const initialSizeCm = settings.sizes.some((s) => s.cm === requestedSize)
@@ -56,7 +60,11 @@ export default async function PhotobookConfigPage({
         </p>
       </div>
 
-      <ConfigForm settings={settings} initialSizeCm={initialSizeCm} />
+      <ConfigForm
+        settings={settings}
+        initialSizeCm={initialSizeCm}
+        promotionRules={promotionRules}
+      />
     </div>
   );
 }
