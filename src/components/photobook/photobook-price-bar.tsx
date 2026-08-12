@@ -1,11 +1,11 @@
 "use client";
 
-import { Tag } from "lucide-react";
 import { formatMXN } from "@/lib/utils";
 import {
   previewSingleItemDiscount,
   type PromotionRule,
 } from "@/lib/promotions-engine";
+import { PromoTicker } from "@/components/photobook/promo-ticker";
 
 /**
  * The price summary under the size / page-count pickers.
@@ -52,13 +52,7 @@ export function PhotobookPriceBar({
             </span>
             <span className="text-sm text-muted-foreground">pasta blanda</span>
           </div>
-          <p className="mt-2 flex flex-wrap items-center justify-center gap-1.5 text-xs font-medium text-primary">
-            <Tag className="h-3.5 w-3.5" />
-            {promo.labels.join(" · ")}
-            <span className="text-muted-foreground">
-              (−{formatMXN(promo.amount)})
-            </span>
-          </p>
+          <PromoTicker promos={promo.promos} />
         </>
       ) : (
         <>

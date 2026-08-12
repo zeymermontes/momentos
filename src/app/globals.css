@@ -52,6 +52,29 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  /* Right-to-left ticker. The track holds two copies of its content, so
+     shifting by half its width lands exactly on the start of the second
+     copy and the loop is seamless. Duration is set per-instance so long
+     text scrolls at the same reading pace as short text. */
+  --animate-marquee: marquee var(--marquee-duration, 18s) linear infinite;
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* Motion here is decorative — the same text is already fully present in the
+   DOM, so stopping it loses nothing. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee {
+    animation: none;
+  }
 }
 
 * {

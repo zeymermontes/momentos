@@ -247,8 +247,8 @@ export function evaluatePromotions(
 }
 
 export type SingleItemDiscount = {
-  /** Customer-facing labels of the promos that fired. */
-  labels: string[];
+  /** Each promo that fired, with what it takes off this one unit. */
+  promos: Array<{ label: string; amount: number }>;
   /** Total pesos off this one unit. */
   amount: number;
   finalPrice: number;
@@ -291,7 +291,10 @@ export function previewSingleItemDiscount(
   if (amount <= 0) return null;
 
   return {
-    labels: itemLevel.map((a) => a.rule.label),
+    promos: itemLevel.map((a) => ({
+      label: a.rule.label,
+      amount: round2(a.discount_amount),
+    })),
     amount,
     finalPrice: round2(Number(unit.unit_price) - amount),
   };
