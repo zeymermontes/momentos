@@ -6,6 +6,7 @@ export {
   evaluatePromotions,
   snapshotApplied,
   readSizeCm,
+  readPageCount,
   PROMOTION_TYPE_LABEL,
   PROMOTION_SCOPE_LABEL,
   type CartItemForPromo,
@@ -62,6 +63,7 @@ export async function getActivePromotionRules(): Promise<PromotionRule[]> {
     buy_x: r.buy_x === null || r.buy_x === undefined ? null : Number(r.buy_x),
     min_subtotal: r.min_subtotal === null ? null : Number(r.min_subtotal),
     photobook_size_cm: (r.photobook_size_cm ?? []).map(Number),
+    photobook_page_count: (r.photobook_page_count ?? []).map(Number),
     product_ids: productsByRule.get(r.id) ?? [],
     category_ids: catsByRule.get(r.id) ?? [],
   }));

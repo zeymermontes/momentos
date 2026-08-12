@@ -109,6 +109,8 @@ export default async function PromotionsAdminPage() {
                       {r.scope === "fotolibros" ? (
                         <span className="block text-muted-foreground">
                           {formatSizes(r.photobook_size_cm)}
+                          {" · "}
+                          {formatPages(r.photobook_page_count)}
                         </span>
                       ) : null}
                     </TableCell>
@@ -177,6 +179,11 @@ export default async function PromotionsAdminPage() {
 function formatSizes(sizes: number[] | null): string {
   if (!sizes || sizes.length === 0) return "Todos los tamaños";
   return sizes.map((cm) => `${cm}×${cm} cm`).join(", ");
+}
+
+function formatPages(pages: number[] | null): string {
+  if (!pages || pages.length === 0) return "todos los paginados";
+  return `${pages.join(", ")} pág.`;
 }
 
 function formatWindow(starts: string | null, ends: string | null): string {

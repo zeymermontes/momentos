@@ -56,6 +56,9 @@ export default async function EditPromotionPage({
               min_subtotal:
                 rule.min_subtotal === null ? null : Number(rule.min_subtotal),
               photobook_size_cm: (rule.photobook_size_cm ?? []).map(Number),
+              photobook_page_count: (rule.photobook_page_count ?? []).map(
+                Number,
+              ),
             }}
             selectedProductIds={(ruleProducts ?? []).map((r) => r.product_id)}
             selectedCategoryIds={(ruleCategories ?? []).map((r) => r.category_id)}
@@ -66,6 +69,7 @@ export default async function EditPromotionPage({
               label: s.label,
               sublabel: s.sublabel,
             }))}
+            photobookPageCounts={photobook.page_counts}
           />
         </CardContent>
       </Card>

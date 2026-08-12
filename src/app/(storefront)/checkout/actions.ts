@@ -15,6 +15,7 @@ import {
   evaluatePromotions,
   snapshotApplied,
   readSizeCm,
+  readPageCount,
   type CartItemForPromo,
   type AppliedPromotionSnapshot,
 } from "@/lib/promotions-engine";
@@ -220,6 +221,7 @@ export async function createOrderAction(
       unit_price: Number(i.unit_price),
       is_photobook: cust?.type === "photobook",
       photobook_size_cm: readSizeCm(cust),
+      photobook_page_count: readPageCount(cust),
     };
     });
 
@@ -309,6 +311,7 @@ export async function createOrderAction(
             buy_x: null,
             scope: "all",
             photobook_size_cm: [],
+            photobook_page_count: [],
             starts_at: appliedCode.promo.starts_at,
             ends_at: appliedCode.promo.ends_at,
             sort_order: 0,

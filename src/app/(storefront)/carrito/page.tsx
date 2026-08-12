@@ -10,6 +10,7 @@ import {
   getActivePromotionRules,
   evaluatePromotions,
   readSizeCm,
+  readPageCount,
   type CartItemForPromo,
 } from "@/lib/promotions";
 import { formatMXN, cn } from "@/lib/utils";
@@ -87,6 +88,7 @@ export default async function CartPage() {
       unit_price: Number(i.unit_price),
       is_photobook: c?.type === "photobook",
       photobook_size_cm: readSizeCm(c),
+      photobook_page_count: readPageCount(c),
     };
   });
 

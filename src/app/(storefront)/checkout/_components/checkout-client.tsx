@@ -62,6 +62,7 @@ type CartItem = {
   additional_category_ids: string[];
   is_photobook?: boolean;
   photobook_size_cm?: number | null;
+  photobook_page_count?: number | null;
   is_gift_card?: boolean;
   delivery_method?: "email" | "physical";
 };
@@ -128,6 +129,7 @@ export function CheckoutClient({
       unit_price: i.unit_price,
       is_photobook: i.is_photobook,
       photobook_size_cm: i.photobook_size_cm,
+      photobook_page_count: i.photobook_page_count,
     })),
     rawShipping,
   );

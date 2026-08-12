@@ -26,6 +26,7 @@ type PromotionRule = {
   min_subtotal: number | null;
   scope: "all" | "products" | "categories" | "fotolibros";
   photobook_size_cm: number[] | null;
+  photobook_page_count: number[] | null;
   starts_at: string | null;
   ends_at: string | null;
   sort_order: number;
@@ -44,6 +45,7 @@ type Props = {
   products: IdName[];
   categories: IdName[];
   photobookSizes?: SizeOption[];
+  photobookPageCounts?: number[];
 };
 
 export function PromotionForm({
@@ -53,6 +55,7 @@ export function PromotionForm({
   products,
   categories,
   photobookSizes = [],
+  photobookPageCounts = [],
 }: Props) {
   const action = rule
     ? updatePromotionAction.bind(null, rule.id)
@@ -74,9 +77,12 @@ export function PromotionForm({
   const [categorySet, setCategorySet] = useState<Set<string>>(
     new Set(selectedCategoryIds),
   );
-  // Stored as strings so it can share `toggle()` with the other pickers.
+  // Stored as strings so they can share `toggle()` with the other pickers.
   const [sizeSet, setSizeSet] = useState<Set<string>>(
     new Set((rule?.photobook_size_cm ?? []).map(String)),
+  );
+  const [pageSet, setPageSet] = useState<Set<string>>(
+    new Set((rule?.photobook_page_count ?? []).map(String)),
   );
 
   function toggle(set: Set<string>, id: string, setter: (s: Set<string>) => void) {
@@ -234,50 +240,52 @@ export function PromotionForm({
         </div>
 
         {scope === "fotolibros" ? (
-          <div className="space-y-2">
-            <Label>Tamaños incluidos</Label>
-            {photobookSizes.length === 0 ? (
-              <p className="text-xs italic text-muted-foreground">
-                No hay tamaños configurados en Ajustes → Fotolibros.
+          <div className="space-y-4">
+            <OptionPicker
+              label="Tamaños incluidos"
+              inputName="photobook_size_cm"
+              emptyText="No hay tamaños configurados en Ajustes → Fotolibros."
+              options={photobookSizes.map((s) => ({
+                value: String(s.cm),
+                label: s.label,
+                hint: s.sublabel,
+              }))}
+              selected={sizeSet}
+              onToggle={(v) => toggle(sizeSet, v, setSizeSet)}
+              allText="Sin selección aplica a todos los tamaños."
+              someText="Solo los tamaños marcados cuentan."
+            />
+            <OptionPicker
+              label="Páginas incluidas"
+              inputName="photobook_page_count"
+              emptyText="No hay paginados configurados en Ajustes → Fotolibros."
+              options={photobookPageCounts.map((n) => ({
+                value: String(n),
+                label: `${n} páginas`,
+              }))}
+              selected={pageSet}
+              onToggle={(v) => toggle(pageSet, v, setPageSet)}
+              allText="Sin selección aplica a todos los paginados."
+              someText="Solo los paginados marcados cuentan."
+            />
+            {sizeSet.size > 0 && pageSet.size > 0 ? (
+              <p className="rounded-md bg-muted/60 p-2.5 text-xs text-muted-foreground">
+                El fotolibro debe cumplir <strong>ambas</strong> condiciones:
+                estar entre los tamaños <em>y</em> entre los paginados
+                marcados. Combinaciones que aplican:{" "}
+                <strong>
+                  {[...sizeSet]
+                    .sort((a, b) => Number(a) - Number(b))
+                    .flatMap((s) =>
+                      [...pageSet]
+                        .sort((a, b) => Number(a) - Number(b))
+                        .map((p) => `${s}×${s} de ${p} pág.`),
+                    )
+                    .join(", ")}
+                </strong>
+                .
               </p>
-            ) : (
-              <>
-                <div className="grid gap-1.5 rounded-md border border-border bg-background p-2 sm:grid-cols-2">
-                  {photobookSizes.map((size) => {
-                    const value = String(size.cm);
-                    const checked = sizeSet.has(value);
-                    return (
-                      <label
-                        key={size.cm}
-                        className={cn(
-                          "flex items-center gap-2 rounded px-2 py-1 text-sm",
-                          checked && "bg-primary/10",
-                        )}
-                      >
-                        <Checkbox
-                          name="photobook_size_cm"
-                          value={value}
-                          checked={checked}
-                          onChange={() => toggle(sizeSet, value, setSizeSet)}
-                        />
-                        <span className="truncate">
-                          {size.label}
-                          <span className="text-muted-foreground">
-                            {" "}
-                            · {size.sublabel}
-                          </span>
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {sizeSet.size === 0
-                    ? "Sin selección la promo aplica a todos los tamaños."
-                    : "Solo los fotolibros de los tamaños marcados cuentan para esta promo."}
-                </p>
-              </>
-            )}
+            ) : null}
           </div>
         ) : null}
 
@@ -361,6 +369,73 @@ export function PromotionForm({
         <SubmitButton edit={Boolean(rule)} />
       </div>
     </form>
+  );
+}
+
+/**
+ * Checkbox group over a fixed list of values (photobook sizes, page counts).
+ * Unlike {@link ScopePicker} the options aren't DB rows — they come from the
+ * photobook settings blob — so they're keyed by their literal value.
+ */
+function OptionPicker({
+  label,
+  inputName,
+  options,
+  selected,
+  onToggle,
+  emptyText,
+  allText,
+  someText,
+}: {
+  label: string;
+  inputName: string;
+  options: Array<{ value: string; label: string; hint?: string }>;
+  selected: Set<string>;
+  onToggle: (value: string) => void;
+  emptyText: string;
+  allText: string;
+  someText: string;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      {options.length === 0 ? (
+        <p className="text-xs italic text-muted-foreground">{emptyText}</p>
+      ) : (
+        <>
+          <div className="grid gap-1.5 rounded-md border border-border bg-background p-2 sm:grid-cols-2">
+            {options.map((opt) => {
+              const checked = selected.has(opt.value);
+              return (
+                <label
+                  key={opt.value}
+                  className={cn(
+                    "flex items-center gap-2 rounded px-2 py-1 text-sm",
+                    checked && "bg-primary/10",
+                  )}
+                >
+                  <Checkbox
+                    name={inputName}
+                    value={opt.value}
+                    checked={checked}
+                    onChange={() => onToggle(opt.value)}
+                  />
+                  <span className="truncate">
+                    {opt.label}
+                    {opt.hint ? (
+                      <span className="text-muted-foreground"> · {opt.hint}</span>
+                    ) : null}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {selected.size === 0 ? allText : someText}
+          </p>
+        </>
+      )}
+    </div>
   );
 }
 

@@ -589,6 +589,8 @@ export interface Database {
           scope: PromotionRuleScope;
           /** scope = fotolibros: qualifying sizes in cm. null/empty = all. */
           photobook_size_cm: number[] | null;
+          /** scope = fotolibros: qualifying page counts. null/empty = all. */
+          photobook_page_count: number[] | null;
           starts_at: string | null;
           ends_at: string | null;
           sort_order: number;
@@ -607,6 +609,7 @@ export interface Database {
           min_subtotal?: number | null;
           scope?: PromotionRuleScope;
           photobook_size_cm?: number[] | null;
+          photobook_page_count?: number[] | null;
           starts_at?: string | null;
           ends_at?: string | null;
           sort_order?: number;

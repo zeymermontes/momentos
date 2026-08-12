@@ -19,6 +19,12 @@ export type PromotionRule = {
    * created before per-size targeting existed.
    */
   photobook_size_cm: number[];
+  /**
+   * For `scope = "fotolibros"`: the page counts the promo applies to. Empty
+   * means all. ANDed with `photobook_size_cm`, because price depends on the
+   * pair — a 16×16 is $300 at 60 pages and $400 at 100.
+   */
+  photobook_page_count: number[];
   starts_at: string | null;
   ends_at: string | null;
   sort_order: number;
@@ -36,6 +42,8 @@ export type CartItemForPromo = {
   is_photobook?: boolean;
   /** Size of the photobook in cm. Only set when `is_photobook`. */
   photobook_size_cm?: number | null;
+  /** Page count of the photobook. Only set when `is_photobook`. */
+  photobook_page_count?: number | null;
 };
 
 export type EvaluatedPromotion = {
@@ -76,18 +84,39 @@ export function readSizeCm(
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+/** Companion to {@link readSizeCm} for the page count. */
+export function readPageCount(
+  customization: Record<string, unknown> | null | undefined,
+): number | null {
+  const raw = customization?.page_count;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * One axis of the fotolibros scope (size or page count). An empty allow-list
+ * means "no restriction on this axis"; otherwise the item must carry a value
+ * and that value must be listed.
+ */
+function matchesDimension(
+  allowed: number[] | undefined,
+  value: number | null | undefined,
+): boolean {
+  if (!allowed || allowed.length === 0) return true;
+  return value != null && allowed.includes(Number(value));
+}
+
 /** Does this cart line fall inside the rule's scope? */
 function itemInScope(rule: PromotionRule, item: CartItemForPromo): boolean {
   if (rule.scope === "all") return true;
 
   if (rule.scope === "fotolibros") {
     if (!item.is_photobook) return false;
-    // No sizes picked = the whole fotolibros catalog.
-    const sizes = rule.photobook_size_cm ?? [];
-    if (sizes.length === 0) return true;
+    // Each list empty = that dimension is unrestricted. Both restricted means
+    // the item has to match on both, since price is set per (size, pages).
     return (
-      item.photobook_size_cm != null &&
-      sizes.includes(Number(item.photobook_size_cm))
+      matchesDimension(rule.photobook_size_cm, item.photobook_size_cm) &&
+      matchesDimension(rule.photobook_page_count, item.photobook_page_count)
     );
   }
 

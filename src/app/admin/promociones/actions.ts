@@ -88,30 +88,35 @@ function readScopeIds(formData: FormData) {
     .getAll("category_ids")
     .map((v) => String(v))
     .filter((v) => /^[0-9a-f-]{36}$/i.test(v));
-  // Photobook sizes are ints (cm), not rows, so they ride along on the rule
-  // itself instead of a link table.
-  const photobookSizes = Array.from(
+  // Photobook sizes and page counts are ints, not rows, so they ride along on
+  // the rule itself instead of a link table.
+  const photobookSizes = readIntSet(formData, "photobook_size_cm");
+  const photobookPageCounts = readIntSet(formData, "photobook_page_count");
+  return { productIds, categoryIds, photobookSizes, photobookPageCounts };
+}
+
+function readIntSet(formData: FormData, field: string): number[] {
+  return Array.from(
     new Set(
       formData
-        .getAll("photobook_size_cm")
+        .getAll(field)
         .map((v) => Number(v))
         .filter((n) => Number.isFinite(n) && n > 0),
     ),
   ).sort((a, b) => a - b);
-  return { productIds, categoryIds, photobookSizes };
 }
 
 /**
- * Sizes only mean anything for the `fotolibros` scope. Storing null elsewhere
- * keeps a stale selection from silently reactivating if the admin flips the
- * scope back later.
+ * Sizes and page counts only mean anything for the `fotolibros` scope. Storing
+ * null elsewhere keeps a stale selection from silently reactivating if the
+ * admin flips the scope back later.
  */
-function scopedSizes(
+function scopedInts(
   scope: "all" | "products" | "categories" | "fotolibros",
-  sizes: number[],
+  values: number[],
 ): number[] | null {
-  if (scope !== "fotolibros" || sizes.length === 0) return null;
-  return sizes;
+  if (scope !== "fotolibros" || values.length === 0) return null;
+  return values;
 }
 
 async function syncScope(
@@ -161,7 +166,8 @@ export async function createPromotionAction(
     if (!parsed.success) {
       return { errors: z.flattenError(parsed.error).fieldErrors };
     }
-    const { productIds, categoryIds, photobookSizes } = readScopeIds(formData);
+    const { productIds, categoryIds, photobookSizes, photobookPageCounts } =
+      readScopeIds(formData);
     const { supabase } = await requireAdmin();
     const { data, error } = await supabase
       .from("promotion_rules")
@@ -174,7 +180,11 @@ export async function createPromotionAction(
         buy_x: parsed.data.buy_x ?? null,
         min_subtotal: parsed.data.min_subtotal ?? null,
         scope: parsed.data.scope,
-        photobook_size_cm: scopedSizes(parsed.data.scope, photobookSizes),
+        photobook_size_cm: scopedInts(parsed.data.scope, photobookSizes),
+        photobook_page_count: scopedInts(
+          parsed.data.scope,
+          photobookPageCounts,
+        ),
         starts_at: parsed.data.starts_at || null,
         ends_at: parsed.data.ends_at || null,
         sort_order: parsed.data.sort_order ?? 0,
@@ -202,7 +212,8 @@ export async function updatePromotionAction(
     if (!parsed.success) {
       return { errors: z.flattenError(parsed.error).fieldErrors };
     }
-    const { productIds, categoryIds, photobookSizes } = readScopeIds(formData);
+    const { productIds, categoryIds, photobookSizes, photobookPageCounts } =
+      readScopeIds(formData);
     const { supabase } = await requireAdmin();
     const { error } = await supabase
       .from("promotion_rules")
@@ -215,7 +226,11 @@ export async function updatePromotionAction(
         buy_x: parsed.data.buy_x ?? null,
         min_subtotal: parsed.data.min_subtotal ?? null,
         scope: parsed.data.scope,
-        photobook_size_cm: scopedSizes(parsed.data.scope, photobookSizes),
+        photobook_size_cm: scopedInts(parsed.data.scope, photobookSizes),
+        photobook_page_count: scopedInts(
+          parsed.data.scope,
+          photobookPageCounts,
+        ),
         starts_at: parsed.data.starts_at || null,
         ends_at: parsed.data.ends_at || null,
         sort_order: parsed.data.sort_order ?? 0,

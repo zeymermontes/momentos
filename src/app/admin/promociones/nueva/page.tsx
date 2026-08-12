@@ -36,6 +36,7 @@ export default async function NewPromotionPage() {
               label: s.label,
               sublabel: s.sublabel,
             }))}
+            photobookPageCounts={photobook.page_counts}
           />
         </CardContent>
       </Card>
