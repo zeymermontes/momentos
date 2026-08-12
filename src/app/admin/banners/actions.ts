@@ -32,6 +32,20 @@ const BannerSchema = z
       message: "Selecciona el carrusel al que pertenece este banner",
       path: ["home_section_id"],
     },
+  )
+  // A window that ends before it starts can never match the RLS predicate, so
+  // the banner silently vanishes for visitors while admins keep seeing it
+  // (`or is_admin()`) — which reads as "the image only loads when logged in".
+  // Catch it at the form instead of letting it reach the DB.
+  .refine(
+    (b) =>
+      !b.starts_at ||
+      !b.ends_at ||
+      new Date(b.ends_at) > new Date(b.starts_at),
+    {
+      message: "La fecha de fin debe ser posterior a la de inicio",
+      path: ["ends_at"],
+    },
   );
 
 export type BannerActionState = {

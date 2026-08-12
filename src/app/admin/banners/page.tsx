@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Plus, Image as ImageIcon } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { EmptyState } from "@/components/admin/empty-state";
@@ -65,12 +66,13 @@ export default async function BannersAdminPage() {
               {(banners ?? []).map((b) => (
                 <TableRow key={b.id}>
                   <TableCell>
-                    <div className="h-12 w-24 overflow-hidden rounded bg-muted">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
+                    <div className="relative h-12 w-24 overflow-hidden rounded bg-muted">
+                      <Image
                         src={b.image_url}
                         alt=""
-                        className="h-full w-full object-cover"
+                        fill
+                        sizes="96px"
+                        className="object-cover"
                       />
                     </div>
                   </TableCell>
@@ -87,11 +89,18 @@ export default async function BannersAdminPage() {
                   </TableCell>
                   <TableCell>{b.sort_order}</TableCell>
                   <TableCell>
-                    {b.active ? (
-                      <Badge variant="success">Activo</Badge>
-                    ) : (
-                      <Badge variant="muted">Inactivo</Badge>
-                    )}
+                    {(() => {
+                      // `active` alone is misleading: RLS also filters on the
+                      // schedule, so an active-but-expired banner is invisible
+                      // to visitors while an admin still sees it on the site.
+                      if (!b.active) return <Badge variant="muted">Inactivo</Badge>;
+                      const state = scheduleState(b.starts_at, b.ends_at);
+                      if (state === "expired")
+                        return <Badge variant="warning">Vencido</Badge>;
+                      if (state === "scheduled")
+                        return <Badge variant="muted">Programado</Badge>;
+                      return <Badge variant="success">Activo</Badge>;
+                    })()}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
@@ -114,4 +123,18 @@ export default async function BannersAdminPage() {
       )}
     </div>
   );
+}
+
+/**
+ * Mirrors the schedule half of the `banners_public_read` RLS policy in
+ * 0002_rls_policies.sql. Keep the two in step.
+ */
+function scheduleState(
+  startsAt: string | null,
+  endsAt: string | null,
+): "live" | "scheduled" | "expired" {
+  const now = Date.now();
+  if (endsAt && new Date(endsAt).getTime() <= now) return "expired";
+  if (startsAt && new Date(startsAt).getTime() > now) return "scheduled";
+  return "live";
 }

@@ -227,8 +227,16 @@ export function BannerForm({
             type="datetime-local"
             defaultValue={toLocalInput(banner?.ends_at)}
           />
+          {state?.errors?.ends_at?.[0] ? (
+            <p className="text-xs text-destructive">{state.errors.ends_at[0]}</p>
+          ) : null}
         </div>
       </div>
+      <p className="text-xs text-muted-foreground">
+        Deja ambas en blanco para que el banner se muestre siempre. Con una
+        fecha de fin ya pasada, el banner desaparece para los visitantes aunque
+        siga marcado como activo — tú lo seguirías viendo por ser admin.
+      </p>
 
       <label className="flex items-center gap-2 text-sm">
         <Checkbox name="active" defaultChecked={banner ? banner.active : true} />
