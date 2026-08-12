@@ -33,7 +33,7 @@
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px auto;">
                 <tr>
                   <td align="center" style="border-radius:12px;background:#F272b3;">
-                    <a href="{{ .ConfirmationURL }}" style="display:inline-block;padding:14px 28px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:12px;letter-spacing:0.02em;">Confirmar el cambio</a>
+                    <a href="{{ .SiteURL }}/confirmar?token_hash={{ .TokenHash }}&amp;type=email_change&amp;next=/mi-cuenta/perfil" style="display:inline-block;padding:14px 28px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:12px;letter-spacing:0.02em;">Confirmar el cambio</a>
                   </td>
                 </tr>
               </table>
@@ -42,7 +42,7 @@
                 Si el botón no funciona, copia y pega este enlace en tu navegador:
               </p>
               <p style="margin:6px 0 0 0;font-size:11px;color:#9ca3af;word-break:break-all;">
-                <a href="{{ .ConfirmationURL }}" style="color:#F272b3;text-decoration:none;">{{ .ConfirmationURL }}</a>
+                <a href="{{ .SiteURL }}/confirmar?token_hash={{ .TokenHash }}&amp;type=email_change&amp;next=/mi-cuenta/perfil" style="color:#F272b3;text-decoration:none;">{{ .SiteURL }}/confirmar?token_hash={{ .TokenHash }}&amp;type=email_change&amp;next=/mi-cuenta/perfil</a>
               </p>
 
               <p style="margin:24px 0 0 0;font-size:12px;color:#9ca3af;">

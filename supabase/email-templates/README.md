@@ -18,15 +18,50 @@ Templates HTML brandeados con Momentos para pegar en
 6. Edita el "Subject" (asunto) según sugerencias abajo
 7. Guarda
 
+## Por qué NO usamos `{{ .ConfirmationURL }}`
+
+Esa variable apunta a `/auth/v1/verify` de Supabase, que **gasta el token de
+un solo uso con un GET**. Cualquier cosa que abra la URL antes que la persona
+—la previsualización de enlaces de iOS, un escáner de correo corporativo— lo
+quema, y quien hace click recibe `otp_expired` y termina en `/login`. Es lo
+que estaba rompiendo la recuperación de contraseña en iPhone.
+
+Además esos enlaces son PKCE: exigen una cookie `code_verifier` en el **mismo
+navegador** que pidió el correo, así que pedir el cambio en la laptop y abrirlo
+en el celular no podía funcionar nunca.
+
+Por eso todas las plantillas apuntan a `/confirmar` con `{{ .TokenHash }}`:
+
+```
+{{ .SiteURL }}/confirmar?token_hash={{ .TokenHash }}&amp;type=<tipo>&amp;next=<ruta>
+```
+
+`/confirmar` no verifica nada al cargar: muestra un botón y el token se
+consume hasta el POST, que ningún robot hace. Y `verifyOtp` con token hash no
+usa `code_verifier`, así que abrir el correo en otro dispositivo funciona.
+
+El `type` debe coincidir con la plantilla, porque la app lo lee de la URL:
+
+| Plantilla | `type` | `next` |
+|---|---|---|
+| Reset Password | `recovery` | `/restablecer-contrasena` |
+| Confirm signup | `signup` | `/mi-cuenta` |
+| Magic Link | `magiclink` | `/mi-cuenta` |
+| Invite user | `invite` | `/mi-cuenta` |
+| Change Email | `email_change` | `/mi-cuenta/perfil` |
+
+**Requisito:** el *Site URL* en Supabase → Authentication → URL Configuration
+tiene que ser `https://momentosbooks.com`, porque `{{ .SiteURL }}` sale de ahí.
+
 ## Variables de Supabase
 
 Los templates usan estas variables (Supabase las reemplaza al enviar):
 
-- `{{ .ConfirmationURL }}` — URL completa del link (Supabase la genera)
+- `{{ .TokenHash }}` — hash del token, lo que verificamos en `/confirmar`
 - `{{ .Email }}` — correo del destinatario
 - `{{ .SiteURL }}` — el Site URL configurado en Supabase
 - `{{ .Token }}` — código OTP de 6 dígitos (si lo usas)
-- `{{ .TokenHash }}` — hash del token
+- `{{ .ConfirmationURL }}` — **no usar**, ver arriba
 
 ## Subjects sugeridos
 
