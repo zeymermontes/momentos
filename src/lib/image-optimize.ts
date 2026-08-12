@@ -100,6 +100,63 @@ export async function optimizeImage(file: File): Promise<OptimizedImage> {
   };
 }
 
+// Catalog artwork (products, categories, banners) is a different job from the
+// print pipeline above: nobody prints it, so the priority is bytes on the
+// wire. Originals straight off a phone ran 1.5 MB for a thumbnail rendered at
+// 200 px. 1600 px is generous headroom for `next/image` to downscale from and
+// for the product-detail lightbox.
+const CATALOG_MAX_DIMENSION = 1600;
+const CATALOG_WEBP_QUALITY = 0.82;
+
+/** Long-lived caching for immutable, UUID-named catalog assets. */
+export const CATALOG_CACHE_CONTROL = "31536000";
+
+export type CatalogImage = {
+  blob: Blob;
+  contentType: string;
+  extension: string;
+};
+
+/**
+ * Downscale + re-encode an image for storefront display. Unlike
+ * {@link optimizeImage} this deliberately re-encodes every format — the color
+ * fidelity that matters for print is irrelevant for a catalog thumbnail, and
+ * WebP is dramatically smaller.
+ *
+ * Falls back to the original file if the browser can't decode it, so an
+ * unusual format still uploads rather than failing outright.
+ */
+export async function optimizeCatalogImage(file: File): Promise<CatalogImage> {
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  } catch {
+    return {
+      blob: file,
+      contentType: file.type || "application/octet-stream",
+      extension: extensionFor(file.type),
+    };
+  }
+
+  const scale = Math.min(
+    1,
+    CATALOG_MAX_DIMENSION / Math.max(bitmap.width, bitmap.height),
+  );
+  const width = Math.round(bitmap.width * scale);
+  const height = Math.round(bitmap.height * scale);
+
+  const canvas = new OffscreenCanvas(width, height);
+  canvas.getContext("2d")!.drawImage(bitmap, 0, 0, width, height);
+  bitmap.close();
+
+  const blob = await canvas.convertToBlob({
+    type: "image/webp",
+    quality: CATALOG_WEBP_QUALITY,
+  });
+
+  return { blob, contentType: "image/webp", extension: "webp" };
+}
+
 export function getImageDimensions(
   src: string,
 ): Promise<{ width: number; height: number }> {

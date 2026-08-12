@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import Image from "next/image";
 import { ChevronLeft, ChevronRight, X, ZoomIn } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -29,11 +30,13 @@ export function ProductGallery({
           aria-label="Ver imagen en tamaño completo"
           className="group relative block aspect-square w-full overflow-hidden rounded-xl bg-muted"
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          <Image
             src={activeSrc}
             alt={name}
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            fill
+            priority
+            sizes="(min-width: 1024px) 50vw, 100vw"
+            className="object-cover transition-transform duration-300 group-hover:scale-105"
           />
           <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-background/90 px-2.5 py-1 text-xs font-medium text-foreground opacity-0 shadow-sm transition group-hover:opacity-100">
             <ZoomIn className="h-3.5 w-3.5" />
@@ -50,14 +53,13 @@ export function ProductGallery({
                 onClick={() => setActiveIdx(i)}
                 aria-label={`Ver imagen ${i + 1}`}
                 className={cn(
-                  "aspect-square overflow-hidden rounded-md border-2 bg-muted transition",
+                  "relative aspect-square overflow-hidden rounded-md border-2 bg-muted transition",
                   i === activeIdx
                     ? "border-primary"
                     : "border-transparent hover:border-border",
                 )}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={src} alt="" className="h-full w-full object-cover" />
+                <Image src={src} alt="" fill sizes="96px" className="object-cover" />
               </button>
             ))}
           </div>
@@ -191,18 +193,13 @@ function Lightbox({
               onClick={() => setIdx(i)}
               aria-label={`Ir a imagen ${i + 1}`}
               className={cn(
-                "h-14 w-14 overflow-hidden rounded-md border-2 transition",
+                "relative h-14 w-14 overflow-hidden rounded-md border-2 transition",
                 i === idx
                   ? "border-primary"
                   : "border-transparent opacity-60 hover:opacity-100",
               )}
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={thumb}
-                alt=""
-                className="h-full w-full object-cover"
-              />
+              <Image src={thumb} alt="" fill sizes="56px" className="object-cover" />
             </button>
           ))}
         </div>

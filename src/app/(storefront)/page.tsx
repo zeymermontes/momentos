@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   ArrowRight,
   BookOpen,
@@ -437,11 +438,14 @@ function Hero({
         </div>
         <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-primary/20 ring-1 ring-secondary-foreground/10">
           {imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            // `priority` because this is the landing's LCP element.
+            <Image
               src={imageUrl}
               alt={title}
-              className="h-full w-full object-cover"
+              fill
+              priority
+              sizes="(min-width: 1024px) 50vw, 100vw"
+              className="object-cover"
             />
           ) : (
             <div className="grid h-full w-full place-items-center bg-primary text-primary-foreground">
@@ -531,11 +535,12 @@ function CategoryGrid({
               className="group relative aspect-[4/3] overflow-hidden rounded-xl bg-secondary"
             >
               {c.image_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
+                <Image
                   src={c.image_url}
                   alt={c.name}
-                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                  fill
+                  sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                  className="object-cover transition-transform duration-300 group-hover:scale-105"
                 />
               ) : (
                 <div className="h-full w-full bg-gradient-to-br from-secondary to-secondary/70" />
@@ -593,13 +598,14 @@ function FeaturedProducts({
                 href={`/productos/${p.slug}`}
                 className="group flex flex-col overflow-hidden rounded-xl border border-border bg-card transition-shadow hover:shadow-md"
               >
-                <div className="aspect-square w-full overflow-hidden bg-muted">
+                <div className="relative aspect-square w-full overflow-hidden bg-muted">
                   {imgs[0] ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
+                    <Image
                       src={imgs[0]}
                       alt={p.name}
-                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      fill
+                      sizes="(min-width: 1024px) 25vw, 50vw"
+                      className="object-cover transition-transform duration-300 group-hover:scale-105"
                     />
                   ) : p.is_gift_card ? (
                     <GiftCardThumb showLabel />
@@ -650,13 +656,14 @@ function BannerStrip({
                   b.link_url && "transition hover:shadow-md",
                 )}
               >
-                <div className="aspect-[2/1] overflow-hidden bg-muted">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
+                <div className="relative aspect-[2/1] overflow-hidden bg-muted">
+                  <Image
                     src={b.image_url}
                     alt={b.title}
+                    fill
+                    sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
                     className={cn(
-                      "h-full w-full object-cover",
+                      "object-cover",
                       b.link_url && "transition-transform duration-300 group-hover:scale-105",
                     )}
                   />
@@ -808,11 +815,12 @@ function PhotobookCta({
       />
       <div className="relative aspect-square w-full overflow-hidden rounded-2xl ring-1 ring-primary/20">
         {imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <Image
             src={imageUrl}
             alt={title}
-            className="h-full w-full object-cover"
+            fill
+            sizes="(min-width: 768px) 50vw, 100vw"
+            className="object-cover"
           />
         ) : (
           <div className="grid h-full w-full place-items-center bg-gradient-to-br from-primary/15 via-background to-primary/25 p-8 sm:p-12">

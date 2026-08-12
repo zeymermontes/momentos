@@ -3,6 +3,10 @@
 import { useState, useRef } from "react";
 import { Upload, X, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  optimizeCatalogImage,
+  CATALOG_CACHE_CONTROL,
+} from "@/lib/image-optimize";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -41,11 +45,17 @@ export function ImageUpload({
     setUploading(true);
     try {
       const supabase = createClient();
-      const ext = file.name.split(".").pop()?.toLowerCase() ?? "bin";
-      const path = `${folder}/${crypto.randomUUID()}.${ext}`;
+      const optimized = await optimizeCatalogImage(file);
+      const path = `${folder}/${crypto.randomUUID()}.${optimized.extension}`;
       const { error: upErr } = await supabase.storage
         .from("public-assets")
-        .upload(path, file, { upsert: false, contentType: file.type });
+        .upload(path, optimized.blob, {
+          upsert: false,
+          contentType: optimized.contentType,
+          // Without this Supabase defaults to `no-cache` and every visitor
+          // re-downloads the file on every navigation.
+          cacheControl: CATALOG_CACHE_CONTROL,
+        });
       if (upErr) throw upErr;
       const { data } = supabase.storage.from("public-assets").getPublicUrl(path);
       setUrl(data.publicUrl);

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -132,11 +133,13 @@ function SlideContainer({
   const hasOverlayText = Boolean(slide.title || slide.subtitle);
   const content = (
     <>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
+      {/* The wrapper is `absolute inset-0`, so `fill` sizes against it. */}
+      <Image
         src={slide.image_url}
         alt={slide.title ?? ""}
-        className="absolute inset-0 h-full w-full object-cover"
+        fill
+        sizes="100vw"
+        className="object-cover"
       />
       {hasOverlayText ? (
         <div className="absolute inset-0 flex items-end bg-gradient-to-t from-black/60 via-black/20 to-transparent">

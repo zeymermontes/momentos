@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Plus, Folder, CornerDownRight, Navigation } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { EmptyState } from "@/components/admin/empty-state";
@@ -123,13 +124,14 @@ function renderRow(node: CategoryNode, depth: number): React.ReactNode {
     <>
       <TableRow key={node.id}>
         <TableCell>
-          <div className="h-10 w-16 overflow-hidden rounded bg-muted">
+          <div className="relative h-10 w-16 overflow-hidden rounded bg-muted">
             {node.image_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <Image
                 src={node.image_url}
                 alt=""
-                className="h-full w-full object-cover"
+                fill
+                sizes="64px"
+                className="object-cover"
               />
             ) : null}
           </div>

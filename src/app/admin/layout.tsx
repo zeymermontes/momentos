@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { MomentosLogo } from "@/components/momentos-logo";
 import { AdminMobileNav } from "@/app/admin/_components/admin-mobile-nav";
-import { createClient } from "@/lib/supabase/server";
+import { getProfile, getSessionUser } from "@/lib/auth";
 import { signOutAction } from "@/app/(auth)/actions";
 import { APP_VERSION } from "@/lib/version";
 
@@ -47,17 +47,12 @@ export default async function AdminLayout({
 }) {
   // Belt-and-suspenders: the proxy already protects /admin, but if someone
   // bypasses it (e.g. direct RSC fetch), this guard ensures we don't render.
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // These two are request-cached, so the page's own `requireAdmin()` reuses
+  // them instead of paying for the same round-trips again.
+  const user = await getSessionUser();
   if (!user) redirect("/login?next=/admin");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role, full_name")
-    .eq("id", user.id)
-    .maybeSingle();
+  const profile = await getProfile(user.id);
   if (profile?.role !== "admin") redirect("/");
 
   return (

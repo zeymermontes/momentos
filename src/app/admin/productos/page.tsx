@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Plus, Package, Gift } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/page-header";
 import { EmptyState } from "@/components/admin/empty-state";
@@ -103,13 +104,14 @@ export default async function ProductsAdminPage() {
                 return (
                   <TableRow key={p.id}>
                     <TableCell>
-                      <div className="h-12 w-12 overflow-hidden rounded bg-muted">
+                      <div className="relative h-12 w-12 overflow-hidden rounded bg-muted">
                         {imgs[0] ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
+                          <Image
                             src={imgs[0]}
                             alt=""
-                            className="h-full w-full object-cover"
+                            fill
+                            sizes="48px"
+                            className="object-cover"
                           />
                         ) : p.is_gift_card ? (
                           <GiftCardThumb />

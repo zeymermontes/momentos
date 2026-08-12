@@ -3,7 +3,22 @@ import { NextResponse, type NextRequest } from "next/server";
 import { env } from "@/lib/env";
 import type { Database } from "@/lib/supabase/database.types";
 
-export async function updateSession(request: NextRequest) {
+/**
+ * @param needsRole Whether the caller will actually read `role`. The role only
+ * gates /admin, but this proxy runs on nearly every request (see the matcher in
+ * src/proxy.ts), so looking it up unconditionally spent a Supabase round-trip
+ * on every storefront navigation for a value nothing read.
+ *
+ * It's a parameter rather than a lazy getter on the return value because
+ * `setAll` reassigns `response` when Supabase rotates the session cookies. A
+ * getter invoked after this function returns would mutate a `response` the
+ * caller has already destructured, silently dropping the refreshed cookies and
+ * logging the user out.
+ */
+export async function updateSession(
+  request: NextRequest,
+  { needsRole = false }: { needsRole?: boolean } = {},
+) {
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient<Database>(
@@ -32,7 +47,7 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   let role: "customer" | "admin" | null = null;
-  if (user) {
+  if (needsRole && user) {
     const { data: profile } = await supabase
       .from("profiles")
       .select("role")

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowRight, BookOpen, Search, Package } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -243,11 +244,12 @@ export default async function ProductsPage({
                   >
                     <div className="relative aspect-square w-full overflow-hidden bg-muted">
                       {imgs[0] ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
+                        <Image
                           src={imgs[0]}
                           alt={p.name}
-                          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          fill
+                          sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
+                          className="object-cover transition-transform duration-300 group-hover:scale-105"
                         />
                       ) : null}
                       <div className="absolute left-2 top-2 flex flex-wrap gap-1">

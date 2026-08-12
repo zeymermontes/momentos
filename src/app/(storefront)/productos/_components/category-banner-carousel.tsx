@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -86,11 +87,12 @@ export function CategoryBannerCarousel({
 function BannerSlide({ banner }: { banner: CategoryBanner }) {
   const inner = (
     <div className="relative aspect-[16/5] w-full overflow-hidden">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
+      <Image
         src={banner.image_url}
         alt={banner.title}
-        className="h-full w-full object-cover"
+        fill
+        sizes="100vw"
+        className="object-cover"
       />
       {banner.title || banner.subtitle ? (
         <div className="absolute inset-0 flex items-end bg-gradient-to-t from-black/60 via-black/20 to-transparent p-6">

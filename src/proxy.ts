@@ -11,16 +11,20 @@ export async function proxy(request: NextRequest) {
   // Action POSTs (the client receives the login HTML and React shows
   // "unexpected response"). Let the request through; the layout-level guard
   // and RLS still enforce security once the network recovers.
+  const { pathname } = request.nextUrl;
+
   let session: Awaited<ReturnType<typeof updateSession>>;
   try {
-    session = await updateSession(request);
+    // Only /admin reads the role — everywhere else skips that lookup.
+    session = await updateSession(request, {
+      needsRole: pathname.startsWith(ADMIN_PREFIX),
+    });
   } catch (e) {
     console.error("[proxy] auth refresh failed, letting request through:", e);
     return NextResponse.next({ request });
   }
 
   const { response, user, role } = session;
-  const { pathname } = request.nextUrl;
 
   if (pathname.startsWith(ADMIN_PREFIX)) {
     if (!user) {
