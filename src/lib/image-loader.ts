@@ -11,8 +11,10 @@
  * it hosts are rewritten to its render endpoint and the browser fetches them
  * directly — small bytes on the wire, nothing to decode on our box.
  *
- * Everything else (the logo and friends in /public, a few KB each) still goes
- * through Next's optimizer, where the cost is negligible.
+ * Everything else is served as-is. Configuring a custom loader removes Next's
+ * `/_next/image` endpoint entirely — it 404s — so falling back to it broke the
+ * logo. Local files in /public are static assets the CDN already caches, and
+ * they are small enough not to need resizing.
  */
 
 const OBJECT_PATH = "/storage/v1/object/public/";
@@ -39,5 +41,5 @@ export default function supabaseImageLoader({
     return `${src.replace(OBJECT_PATH, RENDER_PATH)}?width=${width}&resize=contain&quality=${q}`;
   }
 
-  return `/_next/image?url=${encodeURIComponent(src)}&w=${width}&q=${q}`;
+  return src;
 }
