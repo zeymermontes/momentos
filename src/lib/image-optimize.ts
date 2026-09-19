@@ -37,11 +37,13 @@ function extensionFor(contentType: string): string {
 }
 
 export async function optimizeImage(file: File): Promise<OptimizedImage> {
-  // Decode once for the thumb. `colorSpaceConversion: "none"` preserves
-  // the source ICC profile so wide-gamut iPhone photos stay wide-gamut.
+  // Decode once for the thumb. The default color space conversion is what
+  // honors the embedded ICC profile. `colorSpaceConversion: "none"` does the
+  // opposite of what it sounds like — it discards the profile, so a P3 iPhone
+  // photo gets read as sRGB and comes out ~18% less saturated with reds
+  // drifting toward brown. The P3 canvas below keeps the wide gamut.
   const bitmap = await createImageBitmap(file, {
     imageOrientation: "from-image",
-    colorSpaceConversion: "none",
   });
 
   const thumbScale = Math.min(

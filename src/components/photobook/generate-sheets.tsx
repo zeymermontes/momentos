@@ -29,6 +29,21 @@ const SHEET_JPEG_QUALITY = 0.98;
 // how clean the source was.
 const SHEET_COLOR_SPACE: PredefinedColorSpace = "display-p3";
 
+// Temporary print test. V1 is the production output above: P3 numbers that
+// only look right if whatever prints the file honors the embedded profile.
+// V2 renders the same sheets in sRGB, which prints the same whether or not
+// the profile is read. Both get printed side by side to see which one the
+// printer reproduces faithfully; the loser gets deleted.
+type SheetVariant = "v1" | "v2";
+const VARIANT_COLOR_SPACE: Record<SheetVariant, PredefinedColorSpace> = {
+  v1: SHEET_COLOR_SPACE,
+  v2: "srgb",
+};
+const VARIANT_DIR: Record<SheetVariant, string> = {
+  v1: "sheets",
+  v2: "sheets_v2",
+};
+
 type Props = {
   projectId: string;
   sizeCm: number;
@@ -47,6 +62,8 @@ type SheetResult = {
   side: "front" | "back" | "cover";
   url: string;
   storagePath: string;
+  /** Absent on sheets loaded from the DB, which are always V1. */
+  variant?: SheetVariant;
 };
 
 export function GenerateSheets({ projectId, sizeCm, pages, userId, title, coverImageUrl, coverCrop, existingSheets, autoGenerate }: Props) {
@@ -58,14 +75,14 @@ export function GenerateSheets({ projectId, sizeCm, pages, userId, title, coverI
   const [autoTriggered, setAutoTriggered] = useState(false);
   const autoStartedRef = useRef(false);
   // In-memory cache of the blobs we just generated this session, keyed by
-  // `${side}-${index}`. Lets the "Descargar todo" button zip without
+  // `${variant}-${side}-${index}`. Lets the "Descargar todo" button zip without
   // re-downloading from storage right after generating.
   const blobCacheRef = useRef<Map<string, Blob>>(new Map());
 
   const filledPages = pages.filter((p) => p.image_url);
   const { sheets, layout } = generateSheetPlans(filledPages.length, sizeCm);
 
-  async function handleGenerate() {
+  async function handleGenerate(variants: SheetVariant[] = ["v1"]) {
     setGenerating(true);
     setError(null);
     setResults([]);
@@ -93,117 +110,128 @@ export function GenerateSheets({ projectId, sizeCm, pages, userId, title, coverI
       const supabase = createClient();
       const allResults: SheetResult[] = [];
 
-      for (let si = 0; si < sheets.length; si++) {
-        const sheet = sheets[si];
-        for (const side of ["front", "back"] as const) {
-          const slots = side === "front" ? sheet.front : sheet.back;
-          setProgress(
-            `Generando hoja ${si + 1}/${sheets.length} (${side === "front" ? "frente" : "reverso"})...`,
-          );
+      for (const variant of variants) {
+        const tag = variants.length > 1 ? `[${variant.toUpperCase()}] ` : "";
+        for (let si = 0; si < sheets.length; si++) {
+          const sheet = sheets[si];
+          for (const side of ["front", "back"] as const) {
+            const slots = side === "front" ? sheet.front : sheet.back;
+            setProgress(
+              `${tag}Generando hoja ${si + 1}/${sheets.length} (${side === "front" ? "frente" : "reverso"})...`,
+            );
 
-          const blob = await renderSheet(
-            slots,
-            layout,
-            filledPages,
-            imageMap,
-            side,
-          );
-          blobCacheRef.current.set(`${side}-${si}`, blob);
-
-          const path = `${userId}/photobooks/${projectId}/sheets/sheet_${si + 1}_${side}.jpg`;
-          setProgress(
-            `Subiendo hoja ${si + 1}/${sheets.length} (${side === "front" ? "frente" : "reverso"})...`,
-          );
-
-          const { error: upErr } = await supabase.storage
-            .from("customer-uploads")
-            .upload(path, blob, { contentType: "image/jpeg", upsert: true });
-
-          if (upErr) {
-            // Try without upsert (no update policy)
-            const pathAlt = `${userId}/photobooks/${projectId}/sheets/sheet_${si + 1}_${side}_${Date.now()}.jpg`;
-            const { error: upErr2 } = await supabase.storage
-              .from("customer-uploads")
-              .upload(pathAlt, blob, { contentType: "image/jpeg" });
-            if (upErr2) throw upErr2;
-
-            const { data: signed } = await supabase.storage
-              .from("customer-uploads")
-              .createSignedUrl(pathAlt, 86400);
-            allResults.push({
-              index: si,
+            const blob = await renderSheet(
+              slots,
+              layout,
+              filledPages,
+              imageMap,
               side,
-              url: signed?.signedUrl ?? "",
-              storagePath: pathAlt,
-            });
-          } else {
-            const { data: signed } = await supabase.storage
+              VARIANT_COLOR_SPACE[variant],
+            );
+            blobCacheRef.current.set(`${variant}-${side}-${si}`, blob);
+
+            const path = `${userId}/photobooks/${projectId}/${VARIANT_DIR[variant]}/sheet_${si + 1}_${side}.jpg`;
+            setProgress(
+              `${tag}Subiendo hoja ${si + 1}/${sheets.length} (${side === "front" ? "frente" : "reverso"})...`,
+            );
+
+            const { error: upErr } = await supabase.storage
               .from("customer-uploads")
-              .createSignedUrl(path, 86400);
-            allResults.push({
-              index: si,
-              side,
-              url: signed?.signedUrl ?? "",
-              storagePath: path,
-            });
+              .upload(path, blob, { contentType: "image/jpeg", upsert: true });
+
+            if (upErr) {
+              // Try without upsert (no update policy)
+              const pathAlt = `${userId}/photobooks/${projectId}/${VARIANT_DIR[variant]}/sheet_${si + 1}_${side}_${Date.now()}.jpg`;
+              const { error: upErr2 } = await supabase.storage
+                .from("customer-uploads")
+                .upload(pathAlt, blob, { contentType: "image/jpeg" });
+              if (upErr2) throw upErr2;
+
+              const { data: signed } = await supabase.storage
+                .from("customer-uploads")
+                .createSignedUrl(pathAlt, 86400);
+              allResults.push({
+                index: si,
+                side,
+                url: signed?.signedUrl ?? "",
+                storagePath: pathAlt,
+                variant,
+              });
+            } else {
+              const { data: signed } = await supabase.storage
+                .from("customer-uploads")
+                .createSignedUrl(path, 86400);
+              allResults.push({
+                index: si,
+                side,
+                url: signed?.signedUrl ?? "",
+                storagePath: path,
+                variant,
+              });
+            }
           }
         }
-      }
 
-      // Generate cover sheet (back + spine + cover on one sheet)
-      setProgress("Generando hoja de portada...");
-      let coverImg: HTMLImageElement | null = null;
-      if (coverImageUrl) {
-        coverImg = await new Promise<HTMLImageElement | null>((resolve) => {
+        // Generate cover sheet (back + spine + cover on one sheet)
+        setProgress(`${tag}Generando hoja de portada...`);
+        let coverImg: HTMLImageElement | null = null;
+        if (coverImageUrl) {
+          coverImg = await new Promise<HTMLImageElement | null>((resolve) => {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.onload = () => resolve(img);
+            img.onerror = () => resolve(null);
+            img.src = coverImageUrl;
+          });
+        }
+
+        // Load the black Momentos logo for the back cover
+        const logoImg = await new Promise<HTMLImageElement | null>((resolve) => {
           const img = new Image();
           img.crossOrigin = "anonymous";
           img.onload = () => resolve(img);
           img.onerror = () => resolve(null);
-          img.src = coverImageUrl;
+          img.src = "/momentos-logo.png";
+        });
+
+        const coverBlob = await renderCoverSheet(
+          sizeCm,
+          pages.length,
+          title,
+          coverImg,
+          coverCrop,
+          logoImg,
+          VARIANT_COLOR_SPACE[variant],
+        );
+        blobCacheRef.current.set(`${variant}-cover--1`, coverBlob);
+
+        setProgress(`${tag}Subiendo hoja de portada...`);
+        const coverPath = `${userId}/photobooks/${projectId}/${VARIANT_DIR[variant]}/cover_${Date.now()}.jpg`;
+        const { error: coverUpErr } = await supabase.storage
+          .from("customer-uploads")
+          .upload(coverPath, coverBlob, { contentType: "image/jpeg" });
+        if (coverUpErr) throw coverUpErr;
+
+        const { data: coverSigned } = await supabase.storage
+          .from("customer-uploads")
+          .createSignedUrl(coverPath, 86400);
+        allResults.push({
+          index: -1,
+          side: "cover",
+          url: coverSigned?.signedUrl ?? "",
+          storagePath: coverPath,
+          variant,
         });
       }
-
-      // Load the black Momentos logo for the back cover
-      const logoImg = await new Promise<HTMLImageElement | null>((resolve) => {
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => resolve(img);
-        img.onerror = () => resolve(null);
-        img.src = "/momentos-logo.png";
-      });
-
-      const coverBlob = await renderCoverSheet(
-        sizeCm,
-        pages.length,
-        title,
-        coverImg,
-        coverCrop,
-        logoImg,
-      );
-      blobCacheRef.current.set("cover--1", coverBlob);
-
-      setProgress("Subiendo hoja de portada...");
-      const coverPath = `${userId}/photobooks/${projectId}/sheets/cover_${Date.now()}.jpg`;
-      const { error: coverUpErr } = await supabase.storage
-        .from("customer-uploads")
-        .upload(coverPath, coverBlob, { contentType: "image/jpeg" });
-      if (coverUpErr) throw coverUpErr;
-
-      const { data: coverSigned } = await supabase.storage
-        .from("customer-uploads")
-        .createSignedUrl(coverPath, 86400);
-      allResults.push({
-        index: -1,
-        side: "cover",
-        url: coverSigned?.signedUrl ?? "",
-        storagePath: coverPath,
-      });
 
       setResults(allResults);
       setProgress("Guardando...");
       await savePrintSheetsAction(
         projectId,
-        allResults.map((r) => ({ side: r.side, index: r.index, path: r.storagePath })),
+        // Only V1 is the order's real output; V2 lives in storage for the test.
+        allResults
+          .filter((r) => r.variant !== "v2")
+          .map((r) => ({ side: r.side, index: r.index, path: r.storagePath })),
       );
       setProgress("¡Listo!");
     } catch (e) {
@@ -232,16 +260,18 @@ export function GenerateSheets({ projectId, sizeCm, pages, userId, title, coverI
     try {
       const { default: JSZip } = await import("jszip");
       const zip = new JSZip();
+      const hasV2 = results.some((r) => r.variant === "v2");
 
       for (const r of results) {
         // Prefer the in-memory blob (just generated) to avoid a roundtrip
         // through storage; fall back to fetching the signed URL.
-        const cached = blobCacheRef.current.get(`${r.side}-${r.index}`);
+        const variant = r.variant ?? "v1";
+        const cached = blobCacheRef.current.get(`${variant}-${r.side}-${r.index}`);
         const blob = cached ?? (await (await fetch(r.url)).blob());
         const name = r.side === "cover"
           ? "portada_contraportada.jpg"
           : `hoja_${r.index + 1}_${r.side === "front" ? "frente" : "reverso"}.jpg`;
-        zip.file(name, blob);
+        zip.file(hasV2 ? `${variant}/${variant}_${name}` : name, blob);
       }
 
       const zipBlob = await zip.generateAsync({ type: "blob" });
@@ -266,22 +296,31 @@ export function GenerateSheets({ projectId, sizeCm, pages, userId, title, coverI
             ({layout.cols}×{layout.rows} = {layout.pagesPerSide} páginas/lado) · 300 DPI
           </p>
         </div>
-        <Button
-          onClick={handleGenerate}
-          disabled={generating || filledPages.length === 0}
-        >
-          {generating ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Generando...
-            </>
-          ) : (
-            <>
-              <FileImage className="mr-2 h-4 w-4" />
-              Generar hojas
-            </>
-          )}
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => handleGenerate(["v1", "v2"])}
+            disabled={generating || filledPages.length === 0}
+          >
+            Generar con V2
+          </Button>
+          <Button
+            onClick={() => handleGenerate()}
+            disabled={generating || filledPages.length === 0}
+          >
+            {generating ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Generando...
+              </>
+            ) : (
+              <>
+                <FileImage className="mr-2 h-4 w-4" />
+                Generar hojas
+              </>
+            )}
+          </Button>
+        </div>
       </div>
 
       {progress && generating && (
@@ -323,7 +362,7 @@ export function GenerateSheets({ projectId, sizeCm, pages, userId, title, coverI
           <div className="grid gap-2 sm:grid-cols-2">
             {results.map((r) => (
               <a
-                key={`${r.index}-${r.side}`}
+                key={`${r.variant ?? "v1"}-${r.index}-${r.side}`}
                 href={r.url}
                 target="_blank"
                 rel="noreferrer"
@@ -331,6 +370,9 @@ export function GenerateSheets({ projectId, sizeCm, pages, userId, title, coverI
               >
                 <FileImage className="h-4 w-4 text-primary shrink-0" />
                 <span className="flex-1 truncate">
+                  {r.variant && results.some((x) => x.variant === "v2")
+                    ? `${r.variant.toUpperCase()} · `
+                    : ""}
                   {r.side === "cover"
                     ? "Portada y contraportada"
                     : `Hoja ${r.index + 1} — ${r.side === "front" ? "Frente" : "Reverso"}`}
@@ -351,11 +393,12 @@ async function renderSheet(
   pages: PhotobookPage[],
   imageMap: Map<number, HTMLImageElement>,
   side: "front" | "back",
+  colorSpace: PredefinedColorSpace,
 ): Promise<Blob> {
   const canvas = document.createElement("canvas");
   canvas.width = SHEET_W_PX;
   canvas.height = SHEET_H_PX;
-  const ctx = canvas.getContext("2d", { colorSpace: SHEET_COLOR_SPACE })!;
+  const ctx = canvas.getContext("2d", { colorSpace })!;
 
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, SHEET_W_PX, SHEET_H_PX);
@@ -507,11 +550,12 @@ async function renderCoverSheet(
   coverImg: HTMLImageElement | null,
   coverCrop: CropState,
   logoImg: HTMLImageElement | null,
+  colorSpace: PredefinedColorSpace,
 ): Promise<Blob> {
   const canvas = document.createElement("canvas");
   canvas.width = SHEET_W_PX;
   canvas.height = SHEET_H_PX;
-  const ctx = canvas.getContext("2d", { colorSpace: SHEET_COLOR_SPACE })!;
+  const ctx = canvas.getContext("2d", { colorSpace })!;
 
   // White background
   ctx.fillStyle = "#ffffff";
@@ -541,7 +585,7 @@ async function renderCoverSheet(
   const off = document.createElement("canvas");
   off.width = layoutW;
   off.height = layoutH;
-  const offCtx = off.getContext("2d", { colorSpace: SHEET_COLOR_SPACE })!;
+  const offCtx = off.getContext("2d", { colorSpace })!;
 
   // White layout background
   offCtx.fillStyle = "#ffffff";
