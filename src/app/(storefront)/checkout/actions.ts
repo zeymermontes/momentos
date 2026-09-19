@@ -6,7 +6,8 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { runAction } from "@/lib/server-action";
 import { clearUserCart, getCart } from "@/lib/cart";
-import { mpPreference } from "@/lib/mercadopago";
+import { getPendingVoucher, mpPreference } from "@/lib/mercadopago";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { env } from "@/lib/env";
 import {
   getActivePromotionRules,
@@ -424,24 +425,7 @@ export async function createOrderAction(
     // items on the order right now, then send the customer to /success as
     // if the payment had already cleared.
     if (fullyCoveredByGiftCard) {
-      try {
-        await redeemPendingGiftCardForOrder(order.id);
-      } catch (e) {
-        console.error("[checkout] gift card redemption failed:", e);
-      }
-      try {
-        await issueGiftCardsForPaidOrder(order.id);
-      } catch (e) {
-        console.error("[checkout] gift card issuance failed:", e);
-      }
-      // This path never touches MercadoPago, so neither the webhook nor
-      // /checkout/success will fire the paid confirmation — send it here.
-      try {
-        const { notifyOrderPaid } = await import("@/lib/order-notifications");
-        await notifyOrderPaid(order.id);
-      } catch (e) {
-        console.error("[checkout] notifyOrderPaid failed:", e);
-      }
+      await settleGiftCardPaidOrder(order.id);
       await clearUserCart();
       revalidatePath("/carrito");
       revalidatePath("/mi-cuenta/pedidos");
@@ -451,6 +435,268 @@ export async function createOrderAction(
     await clearUserCart();
     revalidatePath("/carrito");
     revalidatePath("/mi-cuenta/pedidos");
+    redirect(`/checkout/pagar/${order.id}`);
+  });
+}
+
+/**
+ * An order fully covered by a gift card never touches MercadoPago: redeem the
+ * card and issue any gift-card items on the order right away.
+ */
+async function settleGiftCardPaidOrder(orderId: string) {
+  try {
+    await redeemPendingGiftCardForOrder(orderId);
+  } catch (e) {
+    console.error("[checkout] gift card redemption failed:", e);
+  }
+  try {
+    await issueGiftCardsForPaidOrder(orderId);
+  } catch (e) {
+    console.error("[checkout] gift card issuance failed:", e);
+  }
+  // Neither the webhook nor /checkout/success will fire the paid
+  // confirmation on this path — send it here.
+  try {
+    const { notifyOrderPaid } = await import("@/lib/order-notifications");
+    await notifyOrderPaid(orderId);
+  } catch (e) {
+    console.error("[checkout] notifyOrderPaid failed:", e);
+  }
+}
+
+const ChangeFulfillmentSchema = z.discriminatedUnion("fulfillment", [
+  z.object({
+    order_id: z.string().uuid(),
+    fulfillment: z.literal("ship"),
+    address_id: z.string().uuid("Selecciona una dirección"),
+  }),
+  z.object({
+    order_id: z.string().uuid(),
+    fulfillment: z.literal("pickup"),
+    branch_id: z.string().uuid("Selecciona una sucursal"),
+  }),
+]);
+
+/**
+ * Lets the customer switch between shipping and pickup (or pick another
+ * address / branch) on an order that is still waiting for payment. By then
+ * the cart is gone, so the order itself is re-priced: only shipping moves —
+ * item discounts stay as they were snapshotted at checkout.
+ */
+export async function changeFulfillmentAction(
+  _prev: CreateOrderState | undefined,
+  formData: FormData,
+): Promise<CreateOrderState> {
+  return runAction(async () => {
+    const parsed = ChangeFulfillmentSchema.safeParse({
+      order_id: formData.get("order_id"),
+      fulfillment: formData.get("fulfillment"),
+      address_id: formData.get("address_id") || undefined,
+      branch_id: formData.get("branch_id") || undefined,
+    });
+    if (!parsed.success) {
+      return { errors: z.flattenError(parsed.error).fieldErrors };
+    }
+
+    const { supabase, user } = await requireUser();
+
+    const { data: order } = await supabase
+      .from("orders")
+      .select(
+        "id, status, payment_status, payment_id, fulfillment, subtotal, total, discount_amount, applied_promotions, gift_card_id",
+      )
+      .eq("id", parsed.data.order_id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (!order) return { message: "Pedido no encontrado." };
+    if (order.status !== "pending" || order.payment_status === "approved") {
+      return { message: "Este pedido ya no se puede modificar." };
+    }
+    if (order.fulfillment !== "ship" && order.fulfillment !== "pickup") {
+      return { message: "Este pedido no requiere entrega." };
+    }
+
+    let addressSnapshot: Json | null = null;
+    let branchId: string | null = null;
+    let rawShipping = 0;
+    if (parsed.data.fulfillment === "ship") {
+      const { data: addr } = await supabase
+        .from("addresses")
+        .select("*")
+        .eq("id", parsed.data.address_id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (!addr) return { message: "Dirección no encontrada." };
+      addressSnapshot = {
+        label: addr.label,
+        recipient: addr.recipient,
+        street: addr.street,
+        ext_number: addr.ext_number,
+        int_number: addr.int_number,
+        neighborhood: addr.neighborhood,
+        city: addr.city,
+        state: addr.state,
+        zip: addr.zip,
+        phone: addr.phone,
+      };
+      rawShipping = SHIPPING_FLAT_MXN;
+    } else {
+      const { data: branch } = await supabase
+        .from("branches")
+        .select("id")
+        .eq("id", parsed.data.branch_id)
+        .eq("active", true)
+        .maybeSingle();
+      if (!branch) return { message: "Sucursal no disponible." };
+      branchId = branch.id;
+    }
+
+    // Free shipping can come from an automatic rule or from the code the
+    // customer used. Rules are re-evaluated against the order's items: an
+    // order created as pickup never recorded whether shipping would be free.
+    const { data: orderItems } = await supabase
+      .from("order_items")
+      .select("product_id, quantity, unit_price, customization")
+      .eq("order_id", order.id);
+    const productIds = (orderItems ?? [])
+      .map((i) => i.product_id)
+      .filter(Boolean) as string[];
+    const [{ data: products }, { data: extraCats }, rules] = await Promise.all([
+      supabase.from("products").select("id, category_id").in("id", productIds),
+      supabase
+        .from("product_categories")
+        .select("product_id, category_id")
+        .in("product_id", productIds),
+      getActivePromotionRules(),
+    ]);
+    const categoryByProduct = new Map(
+      (products ?? []).map((p) => [p.id, p.category_id]),
+    );
+    const extraByProduct = new Map<string, string[]>();
+    for (const link of extraCats ?? []) {
+      const arr = extraByProduct.get(link.product_id) ?? [];
+      arr.push(link.category_id);
+      extraByProduct.set(link.product_id, arr);
+    }
+    const promoItems: CartItemForPromo[] = (orderItems ?? []).map((i) => {
+      const cust = i.customization as Record<string, unknown> | null;
+      return {
+        product_id: i.product_id ?? "",
+        category_id: i.product_id
+          ? (categoryByProduct.get(i.product_id) ?? null)
+          : null,
+        additional_category_ids: i.product_id
+          ? (extraByProduct.get(i.product_id) ?? [])
+          : [],
+        quantity: Number(i.quantity),
+        unit_price: Number(i.unit_price),
+        is_photobook: cust?.type === "photobook",
+        photobook_size_cm: readSizeCm(cust),
+        photobook_page_count: readPageCount(cust),
+      };
+    });
+    const promos = evaluatePromotions(rules, promoItems, rawShipping);
+
+    const previous = (order.applied_promotions ??
+      []) as unknown as AppliedPromotionSnapshot[];
+    const codeFreeShipping = previous.some(
+      (p) => p.code && p.type === "free_shipping",
+    );
+    const freeShipping = promos.free_shipping || codeFreeShipping;
+    const shippingCost = freeShipping ? 0 : rawShipping;
+
+    const snapshotList: AppliedPromotionSnapshot[] = [
+      ...previous
+        .filter((p) => p.type !== "free_shipping" || p.code)
+        .map((p) =>
+          p.type === "free_shipping"
+            ? { ...p, discount_amount: rawShipping }
+            : p,
+        ),
+      ...snapshotApplied(
+        promos.applied.filter((a) => a.rule.type === "free_shipping"),
+      ),
+    ];
+
+    const totalAfterDiscounts = round2(
+      Number(order.subtotal) + shippingCost - Number(order.discount_amount),
+    );
+
+    const admin = createAdminClient();
+
+    // The reserved gift card amount follows the new total, same as it would
+    // have at checkout.
+    let giftCardAmount = 0;
+    if (order.gift_card_id) {
+      const { data: card } = await admin
+        .from("gift_cards")
+        .select("balance")
+        .eq("id", order.gift_card_id)
+        .maybeSingle();
+      giftCardAmount = applicableAmount(
+        Number(card?.balance ?? 0),
+        totalAfterDiscounts,
+      );
+    }
+    const total = round2(totalAfterDiscounts - giftCardAmount);
+
+    // A payment already generated for the old amount (SPEI, voucher) would
+    // no longer match the order.
+    if (total !== Number(order.total)) {
+      const voucher = await getPendingVoucher(order.payment_id ?? null);
+      if (voucher) {
+        return {
+          message:
+            "Ya generaste un pago pendiente por el total anterior. Espera a que venza o complétalo antes de cambiar la entrega.",
+        };
+      }
+    }
+
+    const fullyCoveredByGiftCard = total === 0 && giftCardAmount > 0;
+
+    // Orders are admin-write under RLS; ownership was checked above.
+    const { error: updateErr } = await admin
+      .from("orders")
+      .update({
+        fulfillment: parsed.data.fulfillment,
+        address_snapshot: addressSnapshot,
+        branch_id: branchId,
+        shipping_cost: shippingCost,
+        total,
+        applied_promotions:
+          snapshotList.length > 0 ? (snapshotList as unknown as Json) : null,
+        gift_card_amount: round2(giftCardAmount),
+        ...(fullyCoveredByGiftCard
+          ? {
+              status: "paid" as const,
+              payment_provider: "gift_card",
+              payment_status: "approved",
+            }
+          : {}),
+      })
+      .eq("id", order.id)
+      .eq("status", "pending");
+    if (updateErr) return { message: updateErr.message };
+
+    revalidatePath("/mi-cuenta/pedidos");
+    revalidatePath(`/mi-cuenta/pedidos/${order.id}`);
+
+    if (fullyCoveredByGiftCard) {
+      try {
+        await admin.from("order_status_history").insert({
+          order_id: order.id,
+          from_status: "pending",
+          to_status: "paid",
+          changed_by_user_id: null,
+          source: "fulfillment_change",
+        });
+      } catch (e) {
+        console.error("[checkout] history insert failed:", e);
+      }
+      await settleGiftCardPaidOrder(order.id);
+      redirect(`/checkout/success?order=${order.id}&status=approved`);
+    }
+
     redirect(`/checkout/pagar/${order.id}`);
   });
 }

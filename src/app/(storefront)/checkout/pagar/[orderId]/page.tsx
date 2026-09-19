@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { PaymentBrick } from "@/app/(storefront)/checkout/_components/payment-brick";
+import { ChangeFulfillment } from "@/app/(storefront)/checkout/_components/change-fulfillment";
 import { requireUser } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { getPendingVoucher } from "@/lib/mercadopago";
@@ -33,7 +34,9 @@ export default async function ResumePaymentPage({
 
   const { data: order } = await supabase
     .from("orders")
-    .select("id, status, total, payment_status, payment_id, fulfillment, created_at")
+    .select(
+      "id, status, total, shipping_cost, payment_status, payment_id, fulfillment, address_snapshot, branch_id, created_at",
+    )
     .eq("id", orderId)
     .eq("user_id", user.id)
     .maybeSingle();
@@ -61,6 +64,38 @@ export default async function ResumePaymentPage({
     voucher?.paymentMethodId === "pse" ||
     voucher?.paymentMethodId === "bank_transfer" ||
     voucher?.paymentMethodId === "spei";
+
+  // Delivery can still be changed while nothing has been paid. Once a
+  // voucher / transfer exists for the current total, it's locked.
+  const canChangeFulfillment =
+    !voucher && (order.fulfillment === "ship" || order.fulfillment === "pickup");
+  const [{ data: addresses }, { data: branches }] = canChangeFulfillment
+    ? await Promise.all([
+        supabase
+          .from("addresses")
+          .select("id, label, street, ext_number, zip, city")
+          .eq("user_id", user.id)
+          .order("is_default", { ascending: false })
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("branches")
+          .select("id, name, address, city")
+          .eq("active", true)
+          .order("name"),
+      ])
+    : [{ data: null }, { data: null }];
+
+  const snapshot = order.address_snapshot as {
+    street?: string;
+    ext_number?: string | null;
+    zip?: string;
+    city?: string;
+  } | null;
+  const shippingCost = Number(order.shipping_cost);
+  const fulfillmentSummary =
+    order.fulfillment === "ship"
+      ? `${snapshot?.street ?? ""} ${snapshot?.ext_number ?? ""}, ${snapshot?.zip ?? ""} ${snapshot?.city ?? ""} · ${shippingCost > 0 ? formatMXN(shippingCost) : "Envío gratis"}`
+      : `${(branches ?? []).find((b) => b.id === order.branch_id)?.name ?? "Sucursal"} · Sin costo de envío`;
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6 lg:px-8">
@@ -93,6 +128,17 @@ export default async function ResumePaymentPage({
               {formatMXN(Number(order.total))}
             </span>
           </div>
+          {canChangeFulfillment ? (
+            <ChangeFulfillment
+              key={fulfillmentSummary}
+              orderId={order.id}
+              current={order.fulfillment as "ship" | "pickup"}
+              currentBranchId={order.branch_id}
+              summary={fulfillmentSummary}
+              addresses={addresses ?? []}
+              branches={branches ?? []}
+            />
+          ) : null}
         </CardContent>
       </Card>
 
@@ -160,6 +206,7 @@ export default async function ResumePaymentPage({
         <div className="mt-6 rounded-xl border border-border bg-card p-5">
           <h2 className="mb-4 text-lg font-semibold">Datos de pago</h2>
           <PaymentBrick
+            key={String(order.total)}
             orderId={order.id}
             total={Number(order.total)}
             publicKey={env.MERCADOPAGO_PUBLIC_KEY}
