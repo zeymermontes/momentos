@@ -90,8 +90,8 @@ export function PaymentBrick({ orderId, total, publicKey, email }: Props) {
           paymentMethods: {
             creditCard: "all",
             debitCard: "all",
-            ticket: "all",
-            atm: "all",
+            // No cash methods (ticket / atm): orders must be paid online
+            // before pickup, and "paga en efectivo" read as pay-at-the-branch.
             bankTransfer: "all",
             mercadoPago: "all",
           },
