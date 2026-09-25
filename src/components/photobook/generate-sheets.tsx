@@ -14,22 +14,11 @@ import type { PhotobookPage } from "@/lib/photobook-config";
 import type { CropState } from "@/lib/photobook-config";
 import { createClient } from "@/lib/supabase/client";
 import { savePrintSheetsAction } from "@/app/(storefront)/fotolibro/actions";
-
-const REF = 400;
-const REF_CONTENT = REF * 0.8;
-
-// 0.98 JPEG keeps the chroma close to the source after the canvas
-// compositing pass. 0.95 worked but introduced subtle muting on skin /
-// foliage tones; the extra ~15-20% file size on a 3900×5700 sheet is
-// fine since printer-side download isn't the bottleneck.
-const SHEET_JPEG_QUALITY = 0.98;
-// Render the sheets in sRGB. Display P3 was tried first to keep the full
-// iPhone gamut, but a P3 file stores numerically less saturated values and
-// depends on the embedded profile to look right. The print path doesn't
-// honor it, so P3 sheets came out muted with reds drifting toward brown. A
-// side-by-side print of both confirmed sRGB reproduces better; the <1% of
-// pixels outside sRGB that get clipped is not visible on paper.
-const SHEET_COLOR_SPACE: PredefinedColorSpace = "srgb";
+import {
+  SHEET_COLOR_SPACE,
+  drawBookPage,
+  exportSheetJpeg,
+} from "@/lib/print-render";
 
 type Props = {
   projectId: string;
@@ -386,13 +375,7 @@ async function renderSheet(
   // photo doesn't get marred on both sides. Front marks are enough for the
   // cutter to align both sides since front/back are registered.
   if (side === "back") {
-    return new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob(
-        (blob) => (blob ? resolve(blob) : reject(new Error("Canvas toBlob failed"))),
-        "image/jpeg",
-        SHEET_JPEG_QUALITY,
-      );
-    });
+    return exportSheetJpeg(canvas);
   }
 
   // L-shaped crop marks at every page corner, pointing INTO the page area.
@@ -449,56 +432,7 @@ async function renderSheet(
     }
   }
 
-  return new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error("Canvas toBlob failed"))),
-      "image/jpeg",
-      SHEET_JPEG_QUALITY,
-    );
-  });
-}
-
-function drawBookPage(
-  ctx: CanvasRenderingContext2D,
-  img: HTMLImageElement,
-  crop: CropState,
-  x: number,
-  y: number,
-  pagePx: number,
-) {
-  const scale = pagePx / REF;
-  const margin = pagePx * 0.1;
-  const contentPx = pagePx * 0.8;
-
-  // White page background
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(x, y, pagePx, pagePx);
-
-  // Clip to content area
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(x + margin, y + margin, contentPx, contentPx);
-  ctx.clip();
-
-  // Calculate contain dimensions in REF space
-  const aspect = img.naturalWidth / img.naturalHeight;
-  const isLandscape = aspect >= 1;
-  const containW = isLandscape ? REF_CONTENT : REF_CONTENT * aspect;
-  const containH = isLandscape ? REF_CONTENT / aspect : REF_CONTENT;
-
-  // Position the image: translate to content center, apply crop transforms
-  const imgCenterX = x + margin + (REF_CONTENT - containW) / 2 * scale + containW / 2 * scale;
-  const imgCenterY = y + margin + (REF_CONTENT - containH) / 2 * scale + containH / 2 * scale;
-
-  ctx.translate(imgCenterX + crop.x * scale, imgCenterY + crop.y * scale);
-  ctx.scale(crop.scale, crop.scale);
-  ctx.rotate(((crop.rotation ?? 0) * Math.PI) / 180);
-
-  const drawW = containW * scale;
-  const drawH = containH * scale;
-  ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
-
-  ctx.restore();
+  return exportSheetJpeg(canvas);
 }
 
 
@@ -653,12 +587,6 @@ async function renderCoverSheet(
 
   ctx.strokeRect(left, top, right - left, bottom - top);
 
-  return new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error("Canvas toBlob failed"))),
-      "image/jpeg",
-      SHEET_JPEG_QUALITY,
-    );
-  });
+  return exportSheetJpeg(canvas);
 }
 

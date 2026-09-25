@@ -10,6 +10,7 @@ import {
   Building2,
   Users,
   Settings,
+  Printer,
   Sparkles,
   Book,
   Ticket,
@@ -38,6 +39,7 @@ const navItems = [
   { href: "/admin/sucursales", label: "Sucursales", icon: Building2 },
   { href: "/admin/usuarios", label: "Usuarios", icon: Users },
   { href: "/admin/configuracion", label: "Configuración", icon: Settings },
+  { href: "/admin/prueba-impresion", label: "Prueba de impresión", icon: Printer },
 ];
 
 export default async function AdminLayout({
