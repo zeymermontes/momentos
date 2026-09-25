@@ -114,3 +114,17 @@ export function getPhotobookPrice(
 }
 
 export const DEFAULT_CROP: CropState = { x: 0, y: 0, scale: 1, rotation: 0 };
+
+/** Production time quoted to customers who pick up a photobook in a branch. */
+export const PHOTOBOOK_PICKUP_BUSINESS_DAYS = 5;
+
+export const PHOTOBOOK_PICKUP_READY_NOTE = `Tu fotolibro estará listo para recoger en ${PHOTOBOOK_PICKUP_BUSINESS_DAYS} días hábiles.`;
+
+/** True when a cart/order item's `customization` JSON describes a photobook. */
+export function isPhotobookCustomization(customization: unknown): boolean {
+  return (
+    !!customization &&
+    typeof customization === "object" &&
+    (customization as Record<string, unknown>).type === "photobook"
+  );
+}

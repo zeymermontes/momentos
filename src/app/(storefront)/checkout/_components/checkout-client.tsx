@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
-import { Truck, Store, ChevronRight } from "lucide-react";
+import { Truck, Store, Clock, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -24,6 +24,10 @@ import {
   createOrderAction,
   type CreateOrderState,
 } from "@/app/(storefront)/checkout/actions";
+import {
+  PHOTOBOOK_PICKUP_BUSINESS_DAYS,
+  PHOTOBOOK_PICKUP_READY_NOTE,
+} from "@/lib/photobook-config";
 import { evaluatePromotions, type PromotionRule } from "@/lib/promotions-engine";
 import { cn, formatMXN } from "@/lib/utils";
 
@@ -106,6 +110,7 @@ export function CheckoutClient({
         ? "ship"
         : "pickup",
   );
+  const hasPhotobook = items.some((i) => i.is_photobook);
   const [addressId, setAddressId] = useState<string>(defaultAddress?.id ?? "");
   const [branchId, setBranchId] = useState<string>(branches[0]?.id ?? "");
   const [appliedCode, setAppliedCode] = useState<AppliedCode | null>(null);
@@ -194,6 +199,7 @@ export function CheckoutClient({
             setBranchId={setBranchId}
             addresses={addresses}
             branches={branches}
+            hasPhotobook={hasPhotobook}
           />
         </div>
       )}
@@ -252,6 +258,7 @@ function ShippingFields({
   setBranchId,
   addresses,
   branches,
+  hasPhotobook,
 }: {
   state: CreateOrderState | undefined;
   fulfillment: "ship" | "pickup";
@@ -262,6 +269,8 @@ function ShippingFields({
   setBranchId: (v: string) => void;
   addresses: Address[];
   branches: Branch[];
+  /** A photobook takes production time; the pickup option says how long. */
+  hasPhotobook: boolean;
 }) {
   return (
     <>
@@ -278,7 +287,11 @@ function ShippingFields({
           <FulfillmentCard
             icon={Store}
             title="Recoger en sucursal"
-            description="Sin costo. Te avisamos cuando esté listo."
+            description={
+              hasPhotobook
+                ? `Sin costo. Listo en ${PHOTOBOOK_PICKUP_BUSINESS_DAYS} días hábiles; te avisamos por correo.`
+                : "Sin costo. Te avisamos cuando esté listo."
+            }
             selected={fulfillment === "pickup"}
             onClick={() => setFulfillment("pickup")}
             disabled={branches.length === 0}
@@ -335,6 +348,12 @@ function ShippingFields({
       ) : (
         <section className="space-y-3">
           <h2 className="text-lg font-semibold">Sucursal para recoger</h2>
+          {hasPhotobook ? (
+            <p className="flex items-start gap-2 rounded-md border border-primary/20 bg-primary/5 p-3 text-sm">
+              <Clock className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <span>{PHOTOBOOK_PICKUP_READY_NOTE} Te avisamos por correo cuando puedas pasar por él.</span>
+            </p>
+          ) : null}
           {branches.length === 0 ? (
             <p className="rounded-md border border-dashed border-border bg-muted/30 p-4 text-sm text-muted-foreground">
               No hay sucursales activas. Elige envío a domicilio.

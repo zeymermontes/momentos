@@ -12,6 +12,7 @@ import {
   type CreateOrderState,
 } from "@/app/(storefront)/checkout/actions";
 import { cn } from "@/lib/utils";
+import { PHOTOBOOK_PICKUP_READY_NOTE } from "@/lib/photobook-config";
 
 type Address = {
   id: string;
@@ -41,6 +42,7 @@ export function ChangeFulfillment({
   summary,
   addresses,
   branches,
+  hasPhotobook,
 }: {
   orderId: string;
   current: "ship" | "pickup";
@@ -48,6 +50,8 @@ export function ChangeFulfillment({
   summary: string;
   addresses: Address[];
   branches: Branch[];
+  /** A photobook takes production time; the pickup option says how long. */
+  hasPhotobook: boolean;
 }) {
   const [state, formAction] = useActionState<
     CreateOrderState | undefined,
@@ -72,6 +76,9 @@ export function ChangeFulfillment({
               {current === "ship" ? "Envío a domicilio" : "Recoger en sucursal"}
             </p>
             <p className="text-xs text-muted-foreground">{summary}</p>
+            {current === "pickup" && hasPhotobook ? (
+              <p className="mt-1 text-xs text-primary">{PHOTOBOOK_PICKUP_READY_NOTE}</p>
+            ) : null}
           </div>
         </div>
         <button
@@ -151,6 +158,9 @@ export function ChangeFulfillment({
                   </option>
                 ))}
               </Select>
+              {hasPhotobook ? (
+                <p className="text-xs text-primary">{PHOTOBOOK_PICKUP_READY_NOTE}</p>
+              ) : null}
             </div>
           )}
 

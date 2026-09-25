@@ -1,4 +1,5 @@
 import "server-only";
+import { PHOTOBOOK_PICKUP_BUSINESS_DAYS } from "@/lib/photobook-config";
 import { Resend } from "resend";
 import { serverOnlyEnv } from "@/lib/env";
 import { env } from "@/lib/env";
@@ -485,6 +486,8 @@ export type OrderEmailItem = {
   variant_name: string | null;
   quantity: number;
   unit_price: number;
+  /** Photobooks quote a production time when picked up in a branch. */
+  is_photobook?: boolean;
 };
 
 export type OrderEmailTotals = {
@@ -553,11 +556,14 @@ function renderOrderPaidEmail(
     )
     .join("");
 
+  const hasPhotobook = args.items.some((it) => it.is_photobook);
   const nextStep =
     args.fulfillment === "digital"
       ? "Como es entrega digital, recibirás cada ítem directamente por correo en los próximos minutos."
       : args.fulfillment === "pickup"
-        ? "Tu pedido entró en producción. Te avisamos cuando esté listo para recoger en sucursal."
+        ? hasPhotobook
+          ? `Tu pedido entró en producción. Tu fotolibro estará listo para recoger en sucursal en ${PHOTOBOOK_PICKUP_BUSINESS_DAYS} días hábiles; te avisamos por correo cuando puedas pasar por él.`
+          : "Tu pedido entró en producción. Te avisamos cuando esté listo para recoger en sucursal."
         : "Tu pedido entró en producción. Te enviaremos otro correo con el número de guía cuando salga a tu domicilio.";
 
   const t = args.totals;
@@ -588,6 +594,7 @@ function renderOrderPaidEmail(
         ? `<div style="margin:24px 0 0 0;padding:16px 18px;background:#fdf2f8;border-radius:12px;border-left:4px solid #F272b3;">
             <p style="margin:0 0 6px 0;font-size:11px;font-weight:700;color:#F272b3;letter-spacing:0.06em;text-transform:uppercase;">Recoger en sucursal</p>
             <p style="margin:0;font-size:14px;font-weight:700;color:#0a0a0a;">${escapeHtml(args.branchName)}</p>
+            ${hasPhotobook ? `<p style="margin:6px 0 0 0;font-size:13px;color:#3f3f46;">Listo en ${PHOTOBOOK_PICKUP_BUSINESS_DAYS} días hábiles.</p>` : ""}
           </div>`
         : "";
 

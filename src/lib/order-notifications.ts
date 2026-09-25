@@ -1,4 +1,5 @@
 import "server-only";
+import { isPhotobookCustomization } from "@/lib/photobook-config";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   sendOrderPaidEmail,
@@ -46,7 +47,7 @@ async function loadOrderForEmail(orderId: string) {
       .maybeSingle(),
     admin
       .from("order_items")
-      .select("product_name, variant_name, quantity, unit_price")
+      .select("product_name, variant_name, quantity, unit_price, customization")
       .eq("order_id", orderId),
   ]);
 
@@ -55,7 +56,15 @@ async function loadOrderForEmail(orderId: string) {
     // Nullable: caller decides how to log a customer with no email.
     email: user?.user?.email ?? null,
     name: profile?.full_name ?? null,
-    items: (items ?? []) as OrderEmailItem[],
+    items: (items ?? []).map(
+      (i): OrderEmailItem => ({
+        product_name: i.product_name,
+        variant_name: i.variant_name,
+        quantity: Number(i.quantity),
+        unit_price: Number(i.unit_price),
+        is_photobook: isPhotobookCustomization(i.customization),
+      }),
+    ),
   };
 }
 

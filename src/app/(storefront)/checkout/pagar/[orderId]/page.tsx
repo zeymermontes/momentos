@@ -10,6 +10,7 @@ import { requireUser } from "@/lib/auth";
 import { env } from "@/lib/env";
 import { getPendingVoucher } from "@/lib/mercadopago";
 import { cn, formatMXN } from "@/lib/utils";
+import { isPhotobookCustomization } from "@/lib/photobook-config";
 import {
   ORDER_STATUS_LABEL,
   ORDER_STATUS_BADGE,
@@ -69,7 +70,7 @@ export default async function ResumePaymentPage({
   // voucher / transfer exists for the current total, it's locked.
   const canChangeFulfillment =
     !voucher && (order.fulfillment === "ship" || order.fulfillment === "pickup");
-  const [{ data: addresses }, { data: branches }] = canChangeFulfillment
+  const [{ data: addresses }, { data: branches }, { data: orderItems }] = canChangeFulfillment
     ? await Promise.all([
         supabase
           .from("addresses")
@@ -82,8 +83,15 @@ export default async function ResumePaymentPage({
           .select("id, name, address, city")
           .eq("active", true)
           .order("name"),
+        supabase
+          .from("order_items")
+          .select("customization")
+          .eq("order_id", order.id),
       ])
-    : [{ data: null }, { data: null }];
+    : [{ data: null }, { data: null }, { data: null }];
+  const hasPhotobook = (orderItems ?? []).some((i) =>
+    isPhotobookCustomization(i.customization),
+  );
 
   const snapshot = order.address_snapshot as {
     street?: string;
@@ -137,6 +145,7 @@ export default async function ResumePaymentPage({
               summary={fulfillmentSummary}
               addresses={addresses ?? []}
               branches={branches ?? []}
+              hasPhotobook={hasPhotobook}
             />
           ) : null}
         </CardContent>

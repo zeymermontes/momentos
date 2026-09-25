@@ -16,6 +16,10 @@ import { requireUser } from "@/lib/auth";
 import { getPendingVoucher } from "@/lib/mercadopago";
 import { cn, formatMXN } from "@/lib/utils";
 import {
+  PHOTOBOOK_PICKUP_READY_NOTE,
+  isPhotobookCustomization,
+} from "@/lib/photobook-config";
+import {
   ORDER_STATUS_LABEL,
   ORDER_STATUS_BADGE,
   formatOrderDate,
@@ -73,6 +77,11 @@ export default async function OrderDetailPage({ params }: { params: Params }) {
   }
 
   const addr = order.address_snapshot as Record<string, string> | null;
+  // Pickup photobooks show their production time until the order is ready.
+  const showPickupEta =
+    order.fulfillment === "pickup" &&
+    (order.status === "paid" || order.status === "in_production") &&
+    items.some((i) => isPhotobookCustomization(i.customization));
   const canResumePayment =
     order.status === "pending" && order.payment_status !== "approved";
   const voucher = canResumePayment
@@ -307,6 +316,11 @@ export default async function OrderDetailPage({ params }: { params: Params }) {
                 <p className="break-words text-muted-foreground">
                   {branchInfo.address}, {branchInfo.city}
                 </p>
+                {showPickupEta ? (
+                  <p className="mt-1 text-primary">
+                    {PHOTOBOOK_PICKUP_READY_NOTE} Te avisamos por correo.
+                  </p>
+                ) : null}
               </div>
             </div>
           ) : (
