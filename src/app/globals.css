@@ -91,3 +91,9 @@ body {
   font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+
+/* Show an HDR photo (gain map) at standard dynamic range, the way it prints.
+   Safari 18+ and Chrome 138+; older browsers ignore the property. */
+.sdr-only {
+  dynamic-range-limit: standard;
+}

@@ -22,6 +22,7 @@ import {
   exportSheetJpeg,
 } from "@/lib/print-render";
 import { embedSrgbProfile, readJpegIccDescription } from "@/lib/srgb-icc";
+import { hasHdrGainMap } from "@/lib/hdr-gain-map";
 import { DEFAULT_CROP } from "@/lib/photobook-config";
 
 type Size = { cm: number; label: string };
@@ -64,6 +65,8 @@ type Original = {
   width: number | null;
   height: number | null;
   icc: string | null;
+  /** The file carries an HDR gain map, so HDR screens show it brighter than it prints. */
+  hdr: boolean;
 };
 
 type Processed = {
@@ -138,11 +141,9 @@ export function PrintTest({ sizes }: { sizes: Size[] }) {
 
   async function describeOriginal(f: File): Promise<Original> {
     const url = URL.createObjectURL(f);
-    const [img, icc] = await Promise.all([
+    const [img, bytes] = await Promise.all([
       loadImage(url),
-      f.type === "image/jpeg"
-        ? f.arrayBuffer().then((b) => readJpegIccDescription(new Uint8Array(b)))
-        : Promise.resolve(null),
+      f.arrayBuffer().then((b) => new Uint8Array(b)),
     ]);
     return {
       url,
@@ -151,7 +152,8 @@ export function PrintTest({ sizes }: { sizes: Size[] }) {
       bytes: f.size,
       width: img?.naturalWidth ?? null,
       height: img?.naturalHeight ?? null,
-      icc,
+      icc: f.type === "image/jpeg" ? readJpegIccDescription(bytes) : null,
+      hdr: hasHdrGainMap(bytes),
     };
   }
 
@@ -337,7 +339,12 @@ export function PrintTest({ sizes }: { sizes: Size[] }) {
       ctx.font = `${Math.round(cmPx * 0.35)}px sans-serif`;
       ctx.fillStyle = "#333333";
       ctx.fillText(
-        `${original.name} · ${original.type} · ${original.icc ?? "sin perfil ICC"}`,
+        [
+          original.name,
+          original.type,
+          original.icc ?? "sin perfil ICC",
+          original.hdr ? "HDR con gain map (impreso en SDR)" : "SDR",
+        ].join(" · "),
         W / 2,
         topY + tile + footerH * 0.45,
       );
@@ -503,12 +510,22 @@ export function PrintTest({ sizes }: { sizes: Size[] }) {
                 <CardTitle>Original</CardTitle>
                 <CardDescription>
                   El archivo tal cual lo subiste, sin compresión ni conversión. El
-                  navegador aplica el perfil de color de la foto para mostrarla.
+                  navegador aplica el perfil de color de la foto para mostrarla,
+                  limitada a SDR para que se compare con lo que sale en papel.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <Preview url={original.url} alt="Original" />
+                <Preview url={original.url} alt="Original" sdr />
+                {original.hdr && (
+                  <p className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
+                    Esta foto es HDR (trae gain map). En un iPhone o una pantalla HDR
+                    se ve más brillante que aquí; el papel y el canvas solo usan la
+                    versión SDR, así que lo que ves arriba es lo que se imprime.
+                  </p>
+                )}
                 <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+                  <dt className="text-muted-foreground">Rango</dt>
+                  <dd>{original.hdr ? "HDR con gain map" : "SDR"}</dd>
                   <dt className="text-muted-foreground">Formato</dt>
                   <dd>{original.type}</dd>
                   <dt className="text-muted-foreground">Peso</dt>
@@ -668,14 +685,19 @@ function Slider({
   );
 }
 
-function Preview({ url, alt }: { url: string; alt: string }) {
+/**
+ * `sdr` caps the image at standard dynamic range (see `.sdr-only` in
+ * globals.css). Without it Safari and Chrome render an HDR photo brighter on
+ * an HDR display than any canvas output can be, so the comparison lies.
+ */
+function Preview({ url, alt, sdr }: { url: string; alt: string; sdr?: boolean }) {
   return (
     <a href={url} target="_blank" rel="noreferrer" className="block">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={url}
         alt={alt}
-        className="aspect-square w-full rounded-md border border-border bg-white object-contain"
+        className={`aspect-square w-full rounded-md border border-border bg-white object-contain${sdr ? " sdr-only" : ""}`}
       />
     </a>
   );
