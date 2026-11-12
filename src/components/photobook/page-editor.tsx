@@ -6,7 +6,7 @@ import { Loader2, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ImageCropper } from "@/components/photobook/image-cropper";
 import { PagePreview } from "@/components/photobook/page-preview";
-import { optimizeImage, getImageDimensions } from "@/lib/image-optimize";
+import { optimizeImage, getImageDimensions, uploadErrorMessage } from "@/lib/image-optimize";
 import { createClient } from "@/lib/supabase/client";
 import {
   updatePageCropAction,
@@ -27,6 +27,7 @@ export function PageEditor({ projectId, page, userId }: Props) {
   const [, setImagePath] = useState(page.image_path ?? "");
   const [imgDims, setImgDims] = useState<{ width: number; height: number } | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -41,6 +42,7 @@ export function PageEditor({ projectId, page, userId }: Props) {
 
   async function handleUpload(file: File) {
     setUploading(true);
+    setUploadError(null);
     try {
       const { full, fullContentType, fullExtension, thumb } = await optimizeImage(file);
       const supabase = createClient();
@@ -68,6 +70,7 @@ export function PageEditor({ projectId, page, userId }: Props) {
       });
     } catch (e) {
       console.error("Upload failed:", e);
+      setUploadError(uploadErrorMessage(e));
     } finally {
       setUploading(false);
     }
@@ -136,6 +139,12 @@ export function PageEditor({ projectId, page, userId }: Props) {
             e.target.value = "";
           }}
         />
+
+        {uploadError && (
+          <p role="alert" className="text-sm text-destructive">
+            {uploadError}
+          </p>
+        )}
 
         {imageUrl && (
           <Button

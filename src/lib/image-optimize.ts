@@ -36,15 +36,42 @@ function extensionFor(contentType: string): string {
   }
 }
 
+/**
+ * The browser couldn't decode the file. The usual case is HEIC/HEIF outside
+ * Safari: Chrome and Firefox accept the file in the picker but can't read it.
+ */
+export class UnsupportedImageError extends Error {
+  readonly fileName: string;
+
+  constructor(fileName: string, options?: ErrorOptions) {
+    super(`Cannot decode image: ${fileName}`, options);
+    this.name = "UnsupportedImageError";
+    this.fileName = fileName;
+  }
+}
+
+/** Customer-facing explanation for a file that failed to upload. */
+export function uploadErrorMessage(error: unknown): string {
+  if (error instanceof UnsupportedImageError) {
+    return "Este navegador no puede leer ese formato (por ejemplo HEIC). Conviértela a JPG o PNG, o súbela desde Safari o tu iPhone.";
+  }
+  return "No pudimos subir la foto. Revisa tu conexión e inténtalo de nuevo.";
+}
+
 export async function optimizeImage(file: File): Promise<OptimizedImage> {
   // Decode once for the thumb. The default color space conversion is what
   // honors the embedded ICC profile. `colorSpaceConversion: "none"` does the
   // opposite of what it sounds like — it discards the profile, so a P3 iPhone
   // photo gets read as sRGB and comes out ~18% less saturated with reds
   // drifting toward brown. The P3 canvas below keeps the wide gamut.
-  const bitmap = await createImageBitmap(file, {
-    imageOrientation: "from-image",
-  });
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file, {
+      imageOrientation: "from-image",
+    });
+  } catch (cause) {
+    throw new UnsupportedImageError(file.name, { cause });
+  }
 
   const thumbScale = Math.min(
     1,

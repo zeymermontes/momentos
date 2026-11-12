@@ -21,7 +21,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Upload, Loader2, Pencil, GripVertical, Trash2, X } from "lucide-react";
 import { PageThumb } from "@/components/photobook/page-preview";
 import { Button } from "@/components/ui/button";
-import { optimizeImage } from "@/lib/image-optimize";
+import { optimizeImage, UnsupportedImageError } from "@/lib/image-optimize";
 import { createClient } from "@/lib/supabase/client";
 import { getPhotobookPrice } from "@/lib/photobook-config";
 import type { PhotobookPage, PhotobookSettings } from "@/lib/photobook-config";
@@ -46,6 +46,10 @@ export function PagesGrid({ projectId, pages: initialPages, userId, currentPageC
   const [pages, setPages] = useState(initialPages);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadIssues, setUploadIssues] = useState<{
+    unsupported: string[];
+    failed: string[];
+  } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [, startTransition] = useTransition();
 
@@ -108,10 +112,16 @@ export function PagesGrid({ projectId, pages: initialPages, userId, currentPageC
     const emptyPages = source.filter((p) => !p.image_path);
     const toUpload = Math.min(files.length, emptyPages.length);
     const supabase = createClient();
+    const unsupported: string[] = [];
+    const failed: string[] = [];
+    setUploadIssues(null);
 
+    // The slot only advances when a photo actually lands, so a file that
+    // fails doesn't leave a blank page in the middle of the book.
+    let slot = 0;
     for (let i = 0; i < toUpload; i++) {
       const file = files[i];
-      const page = emptyPages[i];
+      const page = emptyPages[slot];
       try {
         const { full, fullContentType, fullExtension, thumb } = await optimizeImage(file);
         const ts = `${Date.now()}_${i}`;
@@ -138,12 +148,17 @@ export function PagesGrid({ projectId, pages: initialPages, userId, currentPageC
         );
 
         assignImageToPageAction(projectId, page.id, fullPath, tPath);
+        slot++;
       } catch (e) {
-        console.error(`Failed to upload page ${i + 1}:`, e);
+        console.error(`Failed to upload ${file.name}:`, e);
+        (e instanceof UnsupportedImageError ? unsupported : failed).push(file.name);
       }
       setUploadProgress(i + 1);
     }
 
+    if (unsupported.length > 0 || failed.length > 0) {
+      setUploadIssues({ unsupported, failed });
+    }
     setUploading(false);
     // Server has the canonical state and freshly signed URLs. Refresh so
     // initialPages updates with everything (including thumb URLs that
@@ -272,6 +287,53 @@ export function PagesGrid({ projectId, pages: initialPages, userId, currentPageC
           e.target.value = "";
         }}
       />
+
+      {uploadIssues && (
+        <div
+          role="alert"
+          className="relative rounded-lg border border-destructive/40 bg-destructive/5 p-4 pr-10 text-sm"
+        >
+          <button
+            type="button"
+            aria-label="Cerrar aviso"
+            onClick={() => setUploadIssues(null)}
+            className="absolute right-2 top-2 rounded-md p-1 hover:bg-muted"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          {uploadIssues.unsupported.length > 0 && (
+            <div>
+              <p className="font-semibold">
+                {uploadIssues.unsupported.length === 1
+                  ? "1 foto no se subió porque este navegador no puede leer su formato"
+                  : `${uploadIssues.unsupported.length} fotos no se subieron porque este navegador no puede leer su formato`}
+              </p>
+              <p className="mt-1 break-words text-muted-foreground">
+                {uploadIssues.unsupported.join(", ")}
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                Suele pasar con fotos HEIC de iPhone. Conviértelas a JPG o PNG, o súbelas desde
+                Safari o directamente desde tu iPhone.
+              </p>
+            </div>
+          )}
+          {uploadIssues.failed.length > 0 && (
+            <div className={uploadIssues.unsupported.length > 0 ? "mt-3" : undefined}>
+              <p className="font-semibold">
+                {uploadIssues.failed.length === 1
+                  ? "1 foto no se pudo subir"
+                  : `${uploadIssues.failed.length} fotos no se pudieron subir`}
+              </p>
+              <p className="mt-1 break-words text-muted-foreground">
+                {uploadIssues.failed.join(", ")}
+              </p>
+              <p className="mt-1 text-muted-foreground">
+                Revisa tu conexión y vuelve a subirlas.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Overflow popup */}
       {overflowPopup && (

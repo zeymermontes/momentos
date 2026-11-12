@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ImageCropper } from "@/components/photobook/image-cropper";
 import { StepNav } from "@/components/photobook/step-nav";
-import { optimizeImage, getImageDimensions } from "@/lib/image-optimize";
+import { optimizeImage, getImageDimensions, uploadErrorMessage } from "@/lib/image-optimize";
 import { createClient } from "@/lib/supabase/client";
 import { updateCoverAction, type ActionState } from "@/app/(storefront)/fotolibro/actions";
 import type { CropState, PhotobookProject } from "@/lib/photobook-config";
@@ -26,6 +26,7 @@ export function CoverEditor({ project, coverUrl, userId }: Props) {
   const [crop, setCrop] = useState<CropState>(project.cover_crop);
   const [title, setTitle] = useState(project.title);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [state, formAction, pending] = useActionState<ActionState | undefined, FormData>(
     updateCoverAction,
@@ -43,6 +44,7 @@ export function CoverEditor({ project, coverUrl, userId }: Props) {
 
   async function handleUpload(file: File) {
     setUploading(true);
+    setUploadError(null);
     try {
       const { full, fullContentType, fullExtension, thumb } = await optimizeImage(file);
       const supabase = createClient();
@@ -66,6 +68,7 @@ export function CoverEditor({ project, coverUrl, userId }: Props) {
       setImageUrl(freshUrl);
     } catch (e) {
       console.error("Upload failed:", e);
+      setUploadError(uploadErrorMessage(e));
     } finally {
       setUploading(false);
     }
@@ -130,6 +133,12 @@ export function CoverEditor({ project, coverUrl, userId }: Props) {
             e.target.value = "";
           }}
         />
+
+        {uploadError && (
+          <p role="alert" className="text-sm text-destructive">
+            {uploadError}
+          </p>
+        )}
 
         {imageUrl && (
           <Button
