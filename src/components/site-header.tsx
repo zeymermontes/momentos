@@ -38,8 +38,8 @@ export async function SiteHeader() {
     getPendingOrderCount(),
   ]);
 
-  // Open photobooks (in progress or sitting in the cart). One goes straight
-  // to its editor; several go to the list at /fotolibro.
+  // Open photobooks (in progress or sitting in the cart), for the badge
+  // that links to the list at /fotolibro.
   let openProjects: { id: string }[] = [];
   if (user) {
     const { data } = await supabase
@@ -50,10 +50,6 @@ export async function SiteHeader() {
       .order("updated_at", { ascending: false });
     openProjects = data ?? [];
   }
-  const openProjectsHref =
-    openProjects.length === 1
-      ? `/fotolibro/${openProjects[0].id}/configuracion`
-      : "/fotolibro";
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
@@ -122,17 +118,9 @@ export async function SiteHeader() {
 
           {openProjects.length > 0 ? (
             <Link
-              href={openProjectsHref}
-              aria-label={
-                openProjects.length === 1
-                  ? "Fotolibro en progreso"
-                  : "Fotolibros en progreso"
-              }
-              title={
-                openProjects.length === 1
-                  ? "Continuar fotolibro"
-                  : "Ver tus fotolibros"
-              }
+              href="/fotolibro"
+              aria-label="Tus fotolibros"
+              title="Ver tus fotolibros"
               className="relative hidden h-10 w-10 items-center justify-center rounded-md hover:bg-muted sm:inline-flex"
             >
               <Book className="h-5 w-5" />
