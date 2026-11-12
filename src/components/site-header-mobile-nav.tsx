@@ -17,7 +17,7 @@ type Props = {
   items: MobileCategoryItem[];
   isAdmin: boolean;
   isAuthed: boolean;
-  draftProjectId: string | null;
+  openProjectCount: number;
 };
 
 /**
@@ -36,7 +36,7 @@ export function SiteHeaderMobileNav({
   items,
   isAdmin,
   isAuthed,
-  draftProjectId,
+  openProjectCount,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -65,10 +65,6 @@ export function SiteHeaderMobileNav({
   function close() {
     setOpen(false);
   }
-
-  const fotolibroHref = draftProjectId
-    ? `/fotolibro/${draftProjectId}/configuracion`
-    : "/fotolibro";
 
   // Portaled out of the header because the sticky <header> has
   // `backdrop-blur` which creates a new containing block for
@@ -118,12 +114,12 @@ export function SiteHeaderMobileNav({
           </MobileLink>
 
           <Link
-            href={fotolibroHref}
+            href="/fotolibro"
             onClick={close}
             className="flex items-center gap-2 rounded-md px-3 py-3 text-base font-medium text-primary hover:bg-muted"
           >
             <Book className="h-4 w-4" />
-            {draftProjectId ? "Continuar fotolibro" : "Crear fotolibro"}
+            {openProjectCount > 0 ? "Tus fotolibros" : "Crear fotolibro"}
           </Link>
 
           {items.map((item) => (

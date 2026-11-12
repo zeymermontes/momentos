@@ -38,18 +38,22 @@ export async function SiteHeader() {
     getPendingOrderCount(),
   ]);
 
-  let draftProject: { id: string } | null = null;
+  // Open photobooks (in progress or sitting in the cart). One goes straight
+  // to its editor; several go to the list at /fotolibro.
+  let openProjects: { id: string }[] = [];
   if (user) {
     const { data } = await supabase
       .from("photobook_projects")
       .select("id")
       .eq("user_id", user.id)
       .in("status", ["draft", "completed"])
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    draftProject = data;
+      .order("updated_at", { ascending: false });
+    openProjects = data ?? [];
   }
+  const openProjectsHref =
+    openProjects.length === 1
+      ? `/fotolibro/${openProjects[0].id}/configuracion`
+      : "/fotolibro";
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
@@ -66,7 +70,7 @@ export async function SiteHeader() {
             Productos
           </Link>
           <Link
-            href={draftProject ? `/fotolibro/${draftProject.id}/configuracion` : "/fotolibro"}
+            href="/fotolibro"
             className="text-sm font-medium text-primary hover:text-primary/80 transition-colors"
           >
             Fotolibro
@@ -116,16 +120,24 @@ export async function SiteHeader() {
             </Link>
           ) : null}
 
-          {draftProject ? (
+          {openProjects.length > 0 ? (
             <Link
-              href={`/fotolibro/${draftProject.id}/configuracion`}
-              aria-label="Fotolibro en progreso"
-              title="Continuar fotolibro"
+              href={openProjectsHref}
+              aria-label={
+                openProjects.length === 1
+                  ? "Fotolibro en progreso"
+                  : "Fotolibros en progreso"
+              }
+              title={
+                openProjects.length === 1
+                  ? "Continuar fotolibro"
+                  : "Ver tus fotolibros"
+              }
               className="relative hidden h-10 w-10 items-center justify-center rounded-md hover:bg-muted sm:inline-flex"
             >
               <Book className="h-5 w-5" />
               <span className="absolute -right-0.5 -top-0.5 grid h-5 min-w-5 place-items-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
-                1
+                {openProjects.length}
               </span>
             </Link>
           ) : null}
@@ -167,7 +179,7 @@ export async function SiteHeader() {
             items={headerCategories ?? []}
             isAdmin={isAdmin}
             isAuthed={Boolean(user)}
-            draftProjectId={draftProject?.id ?? null}
+            openProjectCount={openProjects.length}
           />
         </div>
       </div>

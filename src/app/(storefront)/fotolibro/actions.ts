@@ -24,15 +24,6 @@ export async function createProjectAction(
 
     const { supabase, user } = await requireUser();
 
-    const { data: existing } = await supabase
-      .from("photobook_projects")
-      .select("id")
-      .eq("user_id", user.id)
-      .in("status", ["draft", "completed"])
-      .limit(1)
-      .maybeSingle();
-    if (existing) redirect(`/fotolibro/${existing.id}/configuracion`);
-
     const { data: project, error } = await supabase
       .from("photobook_projects")
       .insert({ user_id: user.id, size_cm: sizeCm, page_count: pageCount })
